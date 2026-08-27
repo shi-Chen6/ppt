@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPT 智能生成工具</title>
+<style>
+  :root {
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --border: #e5e9f0;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --green: #16a34a;
+    --red: #dc2626;
+    --amber: #d97706;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { margin-bottom: 20px; }
+  header h1 { margin: 0 0 6px; font-size: 24px; }
+  header p { margin: 0; color: var(--muted); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 { margin: 0 0 14px; font-size: 16px; }
+  .card h3 { margin: 14px 0 8px; font-size: 14px; font-weight: 500; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=password], input[type=number], textarea, select {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 72px; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid #bfdbfe; border-color: var(--primary); }
+  .key-row { display: flex; gap: 8px; align-items: center; }
+  .key-row input { flex: 1; }
+  button {
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: .15s;
+  }
+  button:hover { border-color: #cbd5e1; background: #f8fafc; }
+  button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.primary:hover { background: var(--primary-hover); }
+  button.success { background: var(--green); border-color: var(--green); color: #fff; }
+  button.success:hover { background: #15803d; }
+  button.danger { color: var(--red); }
+  button.ghost { border: none; background: transparent; color: var(--primary); padding: 4px 8px; }
+  button.ghost:hover { background: #eff6ff; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .inline { display: flex; align-items: center; gap: 6px; }
+  .toolbar .inline label { margin: 0; }
+  .toolbar .inline input, .toolbar .inline select { width: auto; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  .page-item { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fafbfd; }
+  .page-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .page-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--primary); color: #fff; font-weight: 600; font-size: 13px;
+    flex: 0 0 auto;
+  }
+  .page-title { flex: 1; min-width: 160px; font-weight: 500; }
+  .badge { font-size: 12px; padding: 2px 9px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .badge.ok { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+  .badge.err { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+  .badge.run { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+  .page-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field label { margin-bottom: 2px; }
+  .opt-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .opt-row span { font-size: 13px; color: var(--muted); }
+  .preview { margin-top: 12px; }
+  .preview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
+  .page-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+
+  .progress-wrap { display: none; margin: 14px 0; }
+  .progress-wrap.show { display: block; }
+  .progress-bar { height: 8px; background: #e5e9f0; border-radius: 6px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--primary); width: 0; transition: width .3s; }
+  .progress-text { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .result-links { display: flex; gap: 10px; flex-wrap: wrap; }
+  .result-links a {
+    display: inline-block; padding: 9px 16px; border-radius: 8px;
+    background: var(--green); color: #fff; text-decoration: none; font-size: 14px;
+  }
+  .result-links a.zip { background: var(--primary); }
+  .ref-box { display: flex; gap: 14px; align-items: flex-start; }
+  .ref-box img { width: 120px; border-radius: 8px; border: 1px solid var(--border); }
+  .sm-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .sm-chips .chip { border: 1px solid var(--border); background: #fff; color: var(--muted); border-radius: 20px; padding: 4px 12px; font-size: 12px; cursor: pointer; transition: .15s; }
+  .sm-chips .chip:hover { border-color: #cbd5e1; background: #f8fafc; }
+  .sm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .sm-card { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fafbfd; }
+  .sm-card img { width: 100%; border-radius: 6px; display: block; aspect-ratio: 16/9; object-fit: cover; border: 1px solid var(--border); }
+  .sm-card .sm-btn-row { display: flex; gap: 6px; margin-top: 8px; }
+  .sm-card.selected { border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; }
+  .toast {
+    position: fixed; top: 20px; right: 20px; z-index: 999;
+    background: #111827; color: #fff; padding: 12px 18px; border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.2); max-width: 360px; display: none;
+  }
+  .toast.err { background: var(--red); }
+  .toast.show { display: block; }
+  @media (max-width: 720px) { .page-body { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>PPT 智能生成工具 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400;"><img src="https://img.meituan.net/content/1287b66686c7dbbbec4fa47fafdd803631203.jpg" alt="CZT" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">作者：CZT</span></h1>
+    <p>上传文档 / 粘贴内容 → 生成大纲与文案 → gpt-image-2 生成 16:9 页面 → 拼成 PPTX（可锁人物长相）</p>
+  </header>
+
+  <!-- ① API 设置 -->
+  <div class="card">
+    <h2>① API 设置</h2>
+    <div class="grid">
+      <div>
+        <label>OpenAI API 地址（中转站）</label>
+        <input type="text" id="openai_base_url">
+      </div>
+      <div>
+        <label>OpenAI Key（生图）</label>
+        <div class="key-row">
+          <input type="password" id="openai_key" placeholder="sk-...">
+          <button type="button" onclick="toggleKey('openai_key', this)">显示</button>
+        </div>
+      </div>
+      <div>
+        <label>生图模型名</label>
+        <input type="text" id="openai_model" value="gpt-image-2" placeholder="gpt-image-2">
+      </div>
+      <div>
+        <label>DeepSeek API 地址</label>
+        <input type="text" id="deepseek_base_url" placeholder="https://api.deepseek.com">
+      </div>
+      <div>
+        <label>DeepSeek Key（生成大纲/文案/提示词）</label>
+        <div class="key-row">
+          <input type="password" id="deepseek_key" placeholder="sk-...">
+          <button type="button" onclick="toggleKey('deepseek_key', this)">显示</button>
+        </div>
+      </div>
+      <div>
+        <label>DeepSeek 模型</label>
+        <select id="deepseek_model">
+          <option value="deepseek-chat">deepseek-chat（推荐）</option>
+          <option value="deepseek-reasoner">deepseek-reasoner</option>
+        </select>
+      </div>
+      <div>
+        <label>图片尺寸</label>
+        <select id="img_size">
+          <option value="1280x720">1280×720（1K 16:9）</option>
+          <option value="2048x1152">2048×1152（2K 16:9）</option>
+          <option value="1920x1080" selected>1920×1080（1080p，默认）</option>
+          <option value="1024x576">1024×576（16:9）</option>
+          <option value="1024x683">1024×683</option>
+          <option value="1024x768">1024×768（4:3）</option>
+          <option value="1024x1024">1024×1024（方形）</option>
+          <option value="1920x640">1920×640（横幅）</option>
+          <option value="1920x1088">1920×1088</option>
+          <option value="1088x1440">1088×1440（竖版）</option>
+          <option value="1672x941">1672×941</option>
+          <option value="2048x878">2048×878（横版）</option>
+        </select>
+      </div>
+      <div>
+        <label>图片质量</label>
+        <select id="img_quality">
+          <option value="high">high（高质量）</option>
+          <option value="medium">medium</option>
+          <option value="low">low（快/省）</option>
+        </select>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label>统一视觉风格（可选，附加到每一页）</label>
+        <input type="text" id="global_style" placeholder="例如：清新卡通插画风，明快配色，适合中小学生">
+      </div>
+      <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; margin-top:2px;">
+        <input type="checkbox" id="skip_proxy" style="width:auto;">
+        <label style="margin:0;">跳过系统代理（直连）：遇到 ProxyError / 远程连接被关闭时勾选此项</label>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:12px;">
+      <button type="button" class="primary" onclick="saveSettings()">保存到本机</button>
+      <button type="button" onclick="clearSettings()">清空设置</button>
+    </div>
+    <div class="hint">Key 仅保存在你浏览器本地（localStorage），不会上传到任何第三方服务器。</div>
+  </div>
+
+  <!-- ② 智能生成：文档 → PPT -->
+  <div class="card">
+    <h2>② 智能生成（文档 → 大纲 → 文案 → 提示词）</h2>
+    <div class="grid">
+      <div>
+        <label>上传文档（Word / TXT / Markdown）</label>
+        <input type="file" id="docFile" accept=".docx,.doc,.txt,.md,.markdown">
+      </div>
+      <div>
+        <label>或直接粘贴文本</label>
+        <textarea id="docPaste" placeholder="把文档内容直接粘贴到这里（可自由复制）" style="min-height:44px"></textarea>
+      </div>
+    </div>
+    <div class="toolbar" style="margin-top:12px;">
+      <button type="button" class="primary" onclick="parseDoc()">解析文档</button>
+      <div class="inline">
+        <label>目标页数</label>
+        <input type="number" id="pageCount" value="8" min="1" max="40" style="width:70px">
+      </div>
+      <div class="inline">
+        <label>学段</label>
+        <select id="grade">
+          <option value="通用">通用</option>
+          <option value="小学">小学</option>
+          <option value="初中">初中</option>
+          <option value="高中">高中</option>
+          <option value="大学">大学</option>
+        </select>
+      </div>
+      <button type="button" onclick="genOutline()">生成大纲</button>
+      <button type="button" onclick="splitContent()">拆解文案</button>
+      <button type="button" onclick="genPrompts()">生成提示词</button>
+      <button type="button" class="success" onclick="importToPages()">导入到页面列表 ↓</button>
+    </div>
+    <div id="docArea"></div>
+  </div>
+
+  <!-- ③ 风格母版 / 锁长相 -->
+  <div class="card">
+    <h2>③ 风格母版 / 锁长相（可选，统一整批风格）</h2>
+    <div class="key-row" style="max-width:420px">
+      <input type="file" id="refFile" accept=".png,.jpg,.jpeg,.webp">
+      <button type="button" class="primary" onclick="uploadRef()">上传母版图</button>
+    </div>
+    <div style="max-width:420px; margin-top:10px;">
+      <label style="display:block; font-size:13px; color:var(--muted); margin-bottom:4px;">锁定范围</label>
+      <select id="lock_scope">
+        <option value="style">整体风格（配色/背景/字体/装饰/版式，推荐用于统一课件）</option>
+        <option value="face">仅锁人物长相</option>
+      </select>
+    </div>
+    <div class="hint">上传一张"风格母版"后，整批生图都会以它为参考，保持配色、背景、字体、装饰、版式一致。也可在下方任意一张已生成的图片上点"设为风格母版"来指定。</div>
+    <div id="refPreview" class="ref-box" style="margin-top:10px"></div>
+
+    <h3 style="margin-top:18px;">AI 生成风格母版（可选）</h3>
+    <div class="hint" style="margin-top:0">写一句风格意图，或点选下方预设，生成 1~3 张候选样张，挑一张设为母版。也可留空，由系统根据已填页面内容自动归纳。</div>
+    <div style="margin-top:8px;">
+      <label>风格描述（可空，留空则自动归纳）</label>
+      <textarea id="style_desc" placeholder="例：信息技术课件，深蓝科技风，几何线条与网络节点装饰，扁平插画，留白多" style="min-height:52px;"></textarea>
+    </div>
+    <div class="sm-chips" id="stylePresets"></div>
+    <div class="key-row" style="margin-top:10px; max-width:420px;">
+      <label style="margin:0; white-space:nowrap;">生成数量</label>
+      <select id="style_count" style="width:auto;">
+        <option value="1">1 张</option>
+        <option value="2" selected>2 张</option>
+        <option value="3">3 张</option>
+      </select>
+      <button type="button" class="primary" id="genStyleBtn" onclick="genStyleMaster()">生成候选</button>
+    </div>
+    <div id="styleCandidates" class="sm-grid" style="margin-top:12px;"></div>
+  </div>
+
+  <!-- ④ 页面内容与生图 -->
+  <div class="card">
+    <h2>④ 页面内容与生图</h2>
+    <div class="toolbar">
+      <button type="button" class="primary" onclick="addPage()">＋ 手动添加页面</button>
+      <button type="button" onclick="optimizeAll()">一键优化全部提示词</button>
+      <button type="button" onclick="generateAll()">一键生成全部图片</button>
+      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
+        <input type="checkbox" id="auto_master" style="width:auto;"> 首图自动当母版
+      </label>
+      <div class="spacer"></div>
+    </div>
+    <div id="pages"></div>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 输出 -->
+  <div class="card">
+    <h2>⑤ 生成 PPT 并下载</h2>
+    <div class="toolbar">
+      <button type="button" class="success" onclick="buildPpt()">生成 PPTX</button>
+      <button type="button" onclick="zipImages()">下载全部图片（ZIP）</button>
+      <button type="button" onclick="downloadPrompts()">下载提示词（MD）</button>
+    </div>
+    <div class="result-links" id="resultLinks"></div>
+    <div class="hint">PPT 为 16:9 宽屏，每页一张全屏图，图片与幻灯片比例完全一致、无拉伸变形。</div>
+  </div>
+</div>
+
+<footer style="text-align:center; padding: 18px 0 26px; color: var(--muted); font-size: 12px;">©CZT</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const state = {
+  pages: [],
+  nextId: 1,
+  busy: false,
+  docText: '',
+  outline: [],        // [{title, points(换行文本), visual}]
+  pagesContent: [],   // [{title, content, visual, prompt}]
+  refImage: '',
+  refUrl: '',
+  styleCandidates: [],
+};
+
+// 图表类型：精确类走 matplotlib 绘图，示意类走生图
+const PRECISE_CHARTS = ['radar', 'bar', 'pie'];
+const CHART_OPTIONS = [
+  ['', '无图表'],
+  ['flowchart', '流程图'],
+  ['mindmap', '思维导图'],
+  ['bubble', '气泡图'],
+  ['timeline', '时间轴'],
+  ['venn', '韦恩图'],
+  ['radar', '雷达图'],
+  ['bar', '柱状图'],
+  ['pie', '饼图'],
+];
+
+function chartOptionsHtml(selected) {
+  return CHART_OPTIONS.map(([v, label]) =>
+    `<option value="${v}"${v === (selected || '') ? ' selected' : ''}>${label}</option>`).join('');
+}
+
+function parseChartData(d) {
+  if (!d) return null;
+  if (typeof d === 'object') return d;
+  if (typeof d === 'string') {
+    try { return JSON.parse(d); } catch (e) { return null; }
+  }
+  return null;
+}
+
+function isRenderable(p) {
+  if (PRECISE_CHARTS.includes(p.chart) && p.chart_data) return true;
+  return !!(p.prompt && p.prompt.trim());
+}
+
+// ---------------- 工具函数 ----------------
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.className = 'toast'; }, 4000);
+}
+
+function toggleKey(id, btn) {
+  const el = $(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.textContent = el.type === 'password' ? '显示' : '隐藏';
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ---------------- 设置读写 ----------------
+
+function getSettings() {
+  return {
+    openai_base_url: $('openai_base_url').value.trim(),
+    openai_key: $('openai_key').value.trim(),
+    openai_model: $('openai_model').value.trim(),
+    deepseek_base_url: $('deepseek_base_url').value.trim(),
+    deepseek_key: $('deepseek_key').value.trim(),
+    deepseek_model: $('deepseek_model').value,
+    img_size: $('img_size').value,
+    img_quality: $('img_quality').value,
+    global_style: $('global_style').value.trim(),
+    lock_scope: $('lock_scope').value,
+    auto_master: $('auto_master').checked,
+    skip_proxy: $('skip_proxy').checked,
+    style_count: $('style_count') ? $('style_count').value : '2',
+  };
+}
+
+function dsBody(s) {
+  return {
+    deepseek_key: s.deepseek_key,
+    deepseek_base_url: s.deepseek_base_url,
+    deepseek_model: s.deepseek_model,
+    skip_proxy: s.skip_proxy,
+  };
+}
+
+function saveSettings() {
+  localStorage.setItem('ppt_tool_settings', JSON.stringify(getSettings()));
+  toast('已保存到本机');
+}
+function loadSettings() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('ppt_tool_settings') || 'null'); } catch (e) {}
+  $('openai_base_url').value = (s && s.openai_base_url) || '';
+  $('openai_key').value = (s && s.openai_key) || '';
+  $('openai_model').value = (s && s.openai_model) || 'gpt-image-2';
+  $('deepseek_base_url').value = (s && s.deepseek_base_url) || 'https://api.deepseek.com';
+  $('deepseek_key').value = (s && s.deepseek_key) || '';
+  $('deepseek_model').value = (s && s.deepseek_model) || 'deepseek-chat';
+  $('img_size').value = (s && s.img_size) || '1920x1080';
+  $('img_quality').value = (s && s.img_quality) || 'high';
+  $('global_style').value = (s && s.global_style) || '';
+  $('lock_scope').value = (s && s.lock_scope) || 'style';
+  $('auto_master').checked = !!(s && s.auto_master);
+  $('skip_proxy').checked = !!(s && s.skip_proxy);
+  if ($('style_count')) $('style_count').value = (s && s.style_count) || '2';
+}
+function clearSettings() {
+  localStorage.removeItem('ppt_tool_settings');
+  $('openai_base_url').value = '';
+  $('openai_key').value = '';
+  $('openai_model').value = 'gpt-image-2';
+  $('deepseek_base_url').value = 'https://api.deepseek.com';
+  $('deepseek_key').value = '';
+  $('deepseek_model').value = 'deepseek-chat';
+  $('img_size').value = '1920x1080';
+  $('img_quality').value = 'high';
+  $('global_style').value = '';
+  $('lock_scope').value = 'style';
+  $('auto_master').checked = false;
+  $('skip_proxy').checked = false;
+  if ($('style_count')) $('style_count').value = '2';
+  toast('已清空本地所有设置，请重新填写 API 地址与 Key');
+}
+
+// ---------------- 后端调用 ----------------
+async function postJson(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({ ok: false, error: '响应解析失败' }));
+  if (!r.ok || data.ok === false) {
+    throw new Error(data.error || ('请求失败 HTTP ' + r.status));
+  }
+  return data;
+}
+
+async function postForm(url, formData) {
+  const r = await fetch(url, { method: 'POST', body: formData });
+  const data = await r.json().catch(() => ({ ok: false, error: '响应解析失败' }));
+  if (!r.ok || data.ok === false) {
+    throw new Error(data.error || ('请求失败 HTTP ' + r.status));
+  }
+  return data;
+}
+
+// ---------------- ② 智能生成 ----------------
+async function parseDoc() {
+  const fileInput = $('docFile');
+  const paste = $('docPaste').value.trim();
+  try {
+    if (fileInput.files && fileInput.files.length) {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      const data = await postForm('/api/parse_doc', fd);
+      state.docText = data.text;
+    } else if (paste) {
+      const data = await postJson('/api/parse_doc', { text: paste });
+      state.docText = data.text;
+    } else {
+      toast('请先选择文件或粘贴文本', true);
+      return;
+    }
+    renderDoc();
+    toast('解析完成，共 ' + state.docText.length + ' 字');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function renderDoc() {
+  const box = $('docArea');
+  if (!state.docText) { box.innerHTML = ''; return; }
+  box.innerHTML = '<h3>解析结果（可编辑，' + state.docText.length + ' 字）</h3>' +
+    '<textarea id="docTextEdit" style="min-height:150px" oninput="state.docText=this.value">' + escapeHtml(state.docText) + '</textarea>';
+}
+
+async function genOutline() {
+  const s = getSettings();
+  if (!state.docText) { toast('请先解析文档', true); return; }
+  if (!s.deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  try {
+    const body = Object.assign(dsBody(s), {
+      text: state.docText,
+      page_count: parseInt($('pageCount').value) || 8,
+      grade: $('grade').value,
+    });
+    const data = await postJson('/api/outline', body);
+    state.outline = (data.outline || []).map((o) => ({
+      title: o.title || '',
+      points: (o.points || []).join('\n'),
+      visual: o.visual || '',
+      chart: o.chart || '',
+    }));
+    renderOutline();
+    toast('大纲已生成，可编辑后继续');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function renderOutline() {
+  const box = $('docArea');
+  if (!state.outline.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<h3>PPT 大纲（可编辑）</h3>' + state.outline.map((o, i) => `
+    <div class="page-item">
+      <div class="page-head"><span class="page-num">${i + 1}</span>
+        <input class="page-title" value="${escapeHtml(o.title)}" placeholder="标题" oninput="state.outline[${i}].title=this.value">
+      </div>
+      <div class="page-body">
+        <div class="field"><label>要点（每行一个）</label><textarea oninput="state.outline[${i}].points=this.value">${escapeHtml(o.points)}</textarea></div>
+        <div class="field"><label>配图建议</label><textarea oninput="state.outline[${i}].visual=this.value">${escapeHtml(o.visual)}</textarea></div>
+        <div class="field"><label>图表类型（可选）</label><select onchange="state.outline[${i}].chart=this.value">${chartOptionsHtml(o.chart)}</select></div>
+      </div>
+    </div>`).join('');
+}
+
+async function splitContent() {
+  const s = getSettings();
+  if (!state.outline.length) { toast('请先生成大纲', true); return; }
+  if (!s.deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  const outline = state.outline.map((o) => ({
+    title: o.title,
+    points: o.points.split('\n').map((x) => x.trim()).filter(Boolean),
+    visual: o.visual,
+    chart: o.chart || '',
+  }));
+  try {
+    const body = Object.assign(dsBody(s), {
+      text: state.docText,
+      outline,
+      grade: $('grade').value,
+    });
+    const data = await postJson('/api/split_content', body);
+    state.pagesContent = (data.pages || []).map((p) => ({
+      title: p.title || '',
+      content: p.content || '',
+      visual: p.visual || '',
+      chart: p.chart || '',
+      chart_data: parseChartData(p.chart_data),
+      prompt: '',
+    }));
+    renderContent();
+    toast('文案已拆解，可编辑后继续');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function renderContent() {
+  const box = $('docArea');
+  if (!state.pagesContent.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<h3>页面文案（可编辑）</h3>' + state.pagesContent.map((c, i) => {
+    const isPrecise = PRECISE_CHARTS.includes(c.chart);
+    const dataJson = c.chart_data ? JSON.stringify(c.chart_data, null, 2) : '';
+    return `
+    <div class="page-item">
+      <div class="page-head"><span class="page-num">${i + 1}</span>
+        <input class="page-title" value="${escapeHtml(c.title)}" placeholder="标题" oninput="state.pagesContent[${i}].title=this.value">
+        ${c.prompt ? '<span class="badge ok">提示词已生成</span>' : '<span class="badge">待生成提示词</span>'}
+      </div>
+      <div class="page-body">
+        <div class="field"><label>正文文案</label><textarea oninput="state.pagesContent[${i}].content=this.value">${escapeHtml(c.content)}</textarea></div>
+        <div class="field"><label>配图建议</label><textarea oninput="state.pagesContent[${i}].visual=this.value">${escapeHtml(c.visual)}</textarea></div>
+        <div class="field"><label>图表类型（可选）</label><select onchange="state.pagesContent[${i}].chart=this.value; renderContent()">${chartOptionsHtml(c.chart)}</select></div>
+        ${isPrecise ? `<div class="field" style="grid-column:1/-1"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{state.pagesContent[${i}].chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function descOf(c) {
+  let desc = '标题：' + c.title + '\n正文：\n' + c.content + '\n配图建议：' + c.visual;
+  if (c.chart) {
+    const item = CHART_OPTIONS.find((o) => o[0] === c.chart);
+    desc += '\n图表类型：' + (item ? item[1] : c.chart);
+  }
+  return desc;
+}
+
+async function genPrompts() {
+  const s = getSettings();
+  if (!state.pagesContent.length) { toast('请先拆解文案', true); return; }
+  if (!s.deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  for (let i = 0; i < state.pagesContent.length; i++) {
+    const c = state.pagesContent[i];
+    progress(i, state.pagesContent.length, '生成提示词 ' + (i + 1) + '/' + state.pagesContent.length);
+    try {
+      const body = Object.assign(dsBody(s), { style: s.global_style, description: descOf(c) });
+      const data = await postJson('/api/optimize', body);
+      c.prompt = data.prompt;
+    } catch (e) {
+      c.prompt = '';
+      toast('第 ' + (i + 1) + ' 页提示词失败：' + e.message, true);
+    }
+    renderContent();
+  }
+  progress(state.pagesContent.length, state.pagesContent.length, '提示词生成完成');
+  setTimeout(hideProgress, 1500);
+  toast('提示词生成完成');
+}
+
+function importToPages() {
+  if (!state.pagesContent.length) { toast('请先拆解文案', true); return; }
+  let n = 0;
+  state.pagesContent.forEach((c) => {
+    addPage({ title: c.title, description: descOf(c), prompt: c.prompt || '', chart: c.chart || '', chart_data: c.chart_data || null });
+    n++;
+  });
+  toast('已导入 ' + n + ' 页到下方页面列表');
+  $('pages').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ---------------- ③ 人物设定图 ----------------
+async function uploadRef() {
+  const f = $('refFile').files[0];
+  if (!f) { toast('请先选择图片', true); return; }
+  try {
+    const fd = new FormData();
+    fd.append('file', f);
+    const data = await postForm('/api/upload_ref', fd);
+    state.refImage = data.filename;
+    state.refUrl = data.url;
+    renderRef();
+    toast('风格母版已上传，整批生图将沿用其风格');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+function renderRef() {
+  const box = $('refPreview');
+  if (!state.refUrl) { box.innerHTML = ''; return; }
+  box.innerHTML = '<img src="' + state.refUrl + '" alt="风格母版">' +
+    '<div><div class="hint" style="margin-top:0">已启用风格母版（整批统一）</div>' +
+    '<button type="button" class="ghost danger" onclick="clearRef()">移除母版</button></div>';
+}
+function clearRef() {
+  state.refImage = '';
+  state.refUrl = '';
+  renderRef();
+  toast('已移除风格母版');
+}
+function setMaster(file, url) {
+  state.refImage = file;
+  state.refUrl = url;
+  renderRef();
+  toast('已将本图设为风格母版，后续生图将沿用其风格');
+}
+
+// ---------------- ③ AI 生成风格母版 ----------------
+const STYLE_PRESETS = [
+  ['信息技术课件：深蓝科技风，几何线条、网络节点与电路纹理装饰，扁平图标，留白多', '信息技术·深蓝科技'],
+  ['计算机基础：白底+靛蓝主色，代码窗口与流程框装饰，等宽字体感，清晰层级', '计算机·简约靛蓝'],
+  ['网络工程：深色背景+青色霓虹，拓扑节点、连线与数据流装饰，现代科技感', '网络·深色霓虹'],
+  ['通用教学：浅灰白底，柔和配色，圆角卡片与手绘小图标，亲和易读', '通用·亲和手绘'],
+];
+function renderStylePresets() {
+  const box = $('stylePresets');
+  if (!box) return;
+  box.innerHTML = STYLE_PRESETS.map((p, i) =>
+    `<button type="button" class="chip" onclick="applyPreset(${i})">${escapeHtml(p[1])}</button>`).join('');
+}
+function applyPreset(i) {
+  if (STYLE_PRESETS[i]) $('style_desc').value = STYLE_PRESETS[i][0];
+}
+async function genStyleMaster() {
+  syncInputs();
+  const s = getSettings();
+  if (!s.openai_key) { toast('请先填写 OpenAI Key', true); return; }
+  if (!s.openai_base_url) { toast('请先填写 OpenAI API 地址', true); return; }
+  const styleDesc = $('style_desc').value.trim();
+  const count = parseInt($('style_count').value, 10) || 2;
+  let pages = null;
+  if (!styleDesc) {
+    pages = state.pages.map((p) => (p.description || p.title || '').trim()).filter(Boolean);
+    if (!pages.length) { toast('请填写风格描述，或先添加页面内容以便自动归纳', true); return; }
+  }
+  const btn = $('genStyleBtn');
+  const oldText = btn.textContent;
+  btn.disabled = true; btn.textContent = '生成中…';
+  try {
+    const body = {
+      openai_key: s.openai_key, openai_base_url: s.openai_base_url, openai_model: s.openai_model,
+      size: s.img_size, quality: s.img_quality, format: 'png', skip_proxy: s.skip_proxy,
+      count, style_desc: styleDesc,
+      deepseek_key: s.deepseek_key, deepseek_base_url: s.deepseek_base_url, deepseek_model: s.deepseek_model,
+      pages,
+    };
+    const data = await postJson('/api/gen_style_master', body);
+    state.styleCandidates = data.candidates || [];
+    renderCandidates();
+    toast('已生成 ' + state.styleCandidates.length + ' 张候选，点选一张设为母版');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = oldText;
+  }
+}
+function renderCandidates() {
+  const box = $('styleCandidates');
+  if (!state.styleCandidates || !state.styleCandidates.length) { box.innerHTML = ''; return; }
+  box.innerHTML = state.styleCandidates.map((c, i) => {
+    const sel = state.refImage === c.filename;
+    return `<div class="sm-card${sel ? ' selected' : ''}">
+      <img src="${c.url}" alt="候选 ${i + 1}">
+      <div class="sm-btn-row"><button type="button" class="${sel ? 'primary' : ''}" onclick="setMasterCand('${c.filename}','${c.url}')">${sel ? '已选为母版' : '选为母版'}</button></div>
+    </div>`;
+  }).join('');
+}
+function setMasterCand(file, url) {
+  setMaster(file, url);
+  renderCandidates();
+}
+
+// ---------------- ④ 页面列表 ----------------
+function addPage(data) {
+  const p = Object.assign({
+    id: state.nextId++,
+    title: '',
+    description: '',
+    prompt: '',
+    chart: '',
+    chart_data: null,
+    imageUrl: '',
+    imageFile: '',
+    status: '',
+  }, data || {});
+  state.pages.push(p);
+  renderPages();
+  return p.id;
+}
+
+function removePage(id) {
+  state.pages = state.pages.filter((p) => p.id !== id);
+  renderPages();
+}
+
+function movePage(id, dir) {
+  const i = state.pages.findIndex((p) => p.id === id);
+  const j = i + dir;
+  if (j < 0 || j >= state.pages.length) return;
+  [state.pages[i], state.pages[j]] = [state.pages[j], state.pages[i]];
+  renderPages();
+}
+
+function getPage(id) { return state.pages.find((p) => p.id === id); }
+
+function syncInputs() {
+  state.pages.forEach((p) => {
+    p.title = $('title_' + p.id).value;
+    p.description = $('desc_' + p.id).value;
+    const pb = $('prompt_' + p.id);
+    if (pb) p.prompt = pb.value;
+  });
+}
+
+function renderPages() {
+  const box = $('pages');
+  if (!state.pages.length) {
+    box.innerHTML = '<div class="hint" style="padding:8px 0;">还没有页面，可用上方「智能生成」导入，或点击「手动添加页面」。</div>';
+    return;
+  }
+  box.innerHTML = state.pages.map((p, idx) => {
+    const badge = p.status === 'run'
+      ? '<span class="badge run">处理中…</span>'
+      : p.status === 'ok' ? '<span class="badge ok">已完成</span>'
+      : p.status === 'err' ? '<span class="badge err">失败</span>'
+      : '<span class="badge">待处理</span>';
+    const isPrecise = PRECISE_CHARTS.includes(p.chart);
+    const dataJson = p.chart_data ? JSON.stringify(p.chart_data, null, 2) : '';
+    return `
+    <div class="page-item" id="item_${p.id}">
+      <div class="page-head">
+        <span class="page-num">${idx + 1}</span>
+        <input class="page-title" id="title_${p.id}" placeholder="页面标题" value="${escapeHtml(p.title)}" oninput="getPage(${p.id}).title=this.value">
+        ${badge}
+        <button type="button" class="ghost" onclick="movePage(${p.id}, -1)" title="上移">↑</button>
+        <button type="button" class="ghost" onclick="movePage(${p.id}, 1)" title="下移">↓</button>
+        <button type="button" class="ghost danger" onclick="removePage(${p.id})">删除</button>
+      </div>
+      <div class="page-body">
+        <div class="field">
+          <label>页面内容描述</label>
+          <textarea id="desc_${p.id}" placeholder="标题、正文要点、配图建议" oninput="getPage(${p.id}).description=this.value">${escapeHtml(p.description)}</textarea>
+        </div>
+        <div class="field">
+          <div class="opt-row">
+            <label>优化后的提示词（可手动修改）</label>
+            <button type="button" class="ghost" onclick="toggleOpt(${p.id})">展开/收起</button>
+          </div>
+          <textarea id="prompt_${p.id}" placeholder="点「优化提示词」后自动填充" oninput="getPage(${p.id}).prompt=this.value">${escapeHtml(p.prompt)}</textarea>
+        </div>
+        <div class="field">
+          <label>图表类型（精确类图表将用程序绘制，不消耗生图额度）</label>
+          <select onchange="getPage(${p.id}).chart=this.value; renderPages()">${chartOptionsHtml(p.chart)}</select>
+        </div>
+        ${isPrecise ? `<div class="field" style="grid-column:1/-1"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{getPage(${p.id}).chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
+      </div>
+      <div class="page-actions">
+        <button type="button" class="primary" onclick="optimizePage(${p.id})">优化提示词</button>
+        <button type="button" onclick="generatePage(${p.id})">生成图片</button>
+      </div>
+      ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx + 1} 页"><div style="margin-top:6px;"><button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">设为风格母版</button></div></div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleOpt(id) {
+  const el = $('prompt_' + id);
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// ---------------- 进度条 ----------------
+function progress(cur, total, text) {
+  const wrap = $('progressWrap');
+  if (total <= 0) { wrap.classList.remove('show'); return; }
+  wrap.classList.add('show');
+  $('progressFill').style.width = Math.round((cur / total) * 100) + '%';
+  $('progressText').textContent = text || `进度 ${cur} / ${total}`;
+}
+function hideProgress() { $('progressWrap').classList.remove('show'); }
+
+// ---------------- 优化 / 生图 ----------------
+async function optimizePage(id) {
+  const p = getPage(id);
+  syncInputs();
+  const s = getSettings();
+  if (!p.description) { toast('第 ' + (state.pages.indexOf(p) + 1) + ' 页描述为空', true); return; }
+  if (!s.deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  p.status = 'run'; renderPages();
+  try {
+    const body = Object.assign(dsBody(s), { style: s.global_style, description: p.description });
+    const data = await postJson('/api/optimize', body);
+    p.prompt = data.prompt;
+    p.status = 'ok';
+    toast('提示词优化完成');
+  } catch (e) {
+    p.status = 'err';
+    toast(e.message, true);
+  }
+  renderPages();
+}
+
+async function optimizeAll() {
+  syncInputs();
+  const targets = state.pages.filter((p) => p.description.trim());
+  if (!targets.length) { toast('请先填写页面描述', true); return; }
+  if (!getSettings().deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  let done = 0;
+  for (const p of state.pages) {
+    if (!p.description.trim()) continue;
+    progress(done, targets.length, `优化提示词 ${done + 1}/${targets.length}`);
+    await optimizePage(p.id);
+    done++;
+  }
+  progress(targets.length, targets.length, '全部提示词优化完成');
+  setTimeout(hideProgress, 1500);
+}
+
+async function generatePage(id) {
+  const p = getPage(id);
+  syncInputs();
+  const s = getSettings();
+  const idx = state.pages.indexOf(p) + 1;
+  p.status = 'run'; renderPages();
+  try {
+    const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
+    if (isPrecise) {
+      const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx });
+      p.imageUrl = data.url;
+      p.imageFile = data.filename;
+      p.status = 'ok';
+      toast('第 ' + idx + ' 页图表已绘制');
+    } else {
+      if (!p.prompt) { p.status = ''; renderPages(); toast('第 ' + idx + ' 页还没有提示词，请先优化或手动填写', true); return; }
+      if (!s.openai_key) { p.status = ''; renderPages(); toast('请先填写 OpenAI Key', true); return; }
+      const body = {
+        openai_key: s.openai_key,
+        openai_base_url: s.openai_base_url,
+        model: s.openai_model,
+        prompt: p.prompt,
+        size: s.img_size,
+        quality: s.img_quality,
+        format: 'png',
+        index: idx,
+        lock_scope: s.lock_scope,
+        skip_proxy: s.skip_proxy,
+      };
+      if (state.refImage) body.ref_image = state.refImage;
+      const data = await postJson('/api/generate', body);
+      p.imageUrl = data.url;
+      p.imageFile = data.filename;
+      p.status = 'ok';
+      toast('第 ' + idx + ' 页图片生成完成');
+    }
+  } catch (e) {
+    p.status = 'err';
+    toast(e.message, true);
+  }
+  renderPages();
+}
+
+async function generateAll() {
+  syncInputs();
+  const targets = state.pages.filter(isRenderable);
+  if (!targets.length) { toast('请先优化提示词，或为精确图表准备数据', true); return; }
+  const needKey = state.pages.some((p) => isRenderable(p) && !(PRECISE_CHARTS.includes(p.chart) && p.chart_data));
+  if (needKey && !getSettings().openai_key) { toast('请先填写 OpenAI Key', true); return; }
+  const autoMaster = $('auto_master').checked;
+  let done = 0;
+  for (const p of state.pages) {
+    if (!isRenderable(p)) continue;
+    progress(done, targets.length, `生成图片 ${done + 1}/${targets.length}`);
+    await generatePage(p.id);
+    if (p.status === 'err') break;
+    // 首图自动当母版：第一张真实生图完成后，把它设为后续页面的风格母版
+    const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
+    if (autoMaster && !state.refImage && !isPrecise && p.imageFile) {
+      state.refImage = p.imageFile;
+      state.refUrl = p.imageUrl;
+      renderRef();
+      toast('已把首图设为风格母版，后续页面将沿用其风格');
+    }
+    done++;
+  }
+  progress(targets.length, targets.length, '全部图片生成完成');
+  setTimeout(hideProgress, 1500);
+}
+
+async function buildPpt() {
+  syncInputs();
+  const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
+  if (!images.length) { toast('还没有生成任何图片', true); return; }
+  try {
+    const data = await postJson('/api/build_ppt', { images, title: '演示文稿' });
+    showResult([{ label: '下载 PPTX', url: data.url, cls: '' }]);
+    toast('PPT 已生成');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function zipImages() {
+  syncInputs();
+  const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
+  if (!images.length) { toast('还没有生成任何图片', true); return; }
+  try {
+    const data = await postJson('/api/zip_images', { images });
+    showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip' }]);
+    toast('图片已打包');
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function showResult(links) {
+  const box = $('resultLinks');
+  box.innerHTML = links.map((l) =>
+    `<a class="${l.cls}" href="${l.url}" download>${l.label}</a>`).join('');
+}
+
+// ⑤ 下载提示词（打包为单个 Markdown 文件）
+function downloadPrompts() {
+  syncInputs();
+  const rows = state.pages
+    .map((p, i) => ({ idx: i + 1, title: (p.title || '').trim(), prompt: (p.prompt || '').trim() }))
+    .filter((r) => r.prompt);
+  if (!rows.length) { toast('还没有生成任何提示词', true); return; }
+  const skipped = state.pages.length - rows.length;
+
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+  const md = rows.map((r) => {
+    const head = r.title ? `## 第 ${r.idx} 页 · ${r.title}` : `## 第 ${r.idx} 页`;
+    return `${head}\n\n${r.prompt}`;
+  }).join('\n\n---\n\n');
+
+  const content = `# PPT 生图提示词\n\n> 导出时间：${timeStr}\n> 共 ${rows.length} 页${skipped ? `（已跳过 ${skipped} 页无提示词）` : ''}\n\n${md}\n`;
+
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `提示词_${stamp}.md`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`已导出 ${rows.length} 页提示词${skipped ? `（跳过 ${skipped} 页无提示词）` : ''}`);
+}
+
+// ---------------- 启动 ----------------
+loadSettings();
+renderStylePresets();
+renderPages();
+</script>
+</body>
+</html>
