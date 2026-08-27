@@ -18,6 +18,7 @@ import json
 import os
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
@@ -53,6 +54,20 @@ OPTIMIZE_SYSTEM = (
     "文字用中文并用双引号精确标出，并强调\"图表布局清晰、节点对齐、连线方向正确、标签不重叠\"。\n"
     "5. 补充画面质感、光线、留白、细节等能让画面更精致的描述。\n"
     "6. 只输出最终提示词本身，用一段连续文字输出，不要任何解释、不要分条、不要加标题或前后缀。"
+)
+
+STYLE_MASTER_SYSTEM = (
+    "你是一位演示文稿视觉设计师与 AI 生图提示词专家。"
+    "用户会给出一个“风格意图”（可能是中文风格描述，也可能是若干页课件的内容描述），"
+    "请据此输出一段用于 gpt-image-2 生成 16:9 演示文稿“风格母版样张”的高质量英文提示词。\n\n"
+    "要求：\n"
+    "1. 这是一张纯“视觉风格样张”，不含任何具体文字、标题或正文，只体现整体设计系统："
+    "主色调与配色方案、背景质感、字体风格、装饰元素、版式骨架、图标/插图风格、光影与留白。\n"
+    "2. 若用户给的是页面内容，请先从内容推断适合的教学课件风格再输出。例如信息技术/计算机/网络类"
+    "课程宜偏科技感：深蓝或靛蓝主色、几何线条、电路/代码/网络节点等装饰、扁平图标、清晰层级与留白。\n"
+    "3. 明确写出：16:9 横向构图、风格关键词、主色调与配色、版式骨架与装饰元素。\n"
+    "4. 强调“画面不含可读文字、仅展示统一视觉风格”。\n"
+    "5. 只输出一段连续英文提示词，不要解释、不要分条、不要标题或前后缀。"
 )
 
 OUTLINE_SYSTEM = (
@@ -125,8 +140,11 @@ def _proxy_cfg(skip_proxy):
     return None
 
 
-def _save_image(img_bytes, index):
-    """按真实图片格式确定扩展名并落盘，兼容 png/jpeg/webp 等。"""
+def _save_image(img_bytes, index, prefix="page"):
+    """按真实图片格式确定扩展名并落盘，兼容 png/jpeg/webp 等。
+
+    prefix 用于区分页面图（page_）与风格母版候选图（master_）。
+    """
     ext = "png"
     try:
         im = Image.open(io.BytesIO(img_bytes))
@@ -134,7 +152,7 @@ def _save_image(img_bytes, index):
         ext = "jpg" if fmt == "jpeg" else (fmt if fmt in ("png", "webp") else "png")
     except Exception:
         ext = "png"
-    fname = f"page_{int(index):02d}_{int(time.time() * 1000)}.{ext}"
+    fname = f"{prefix}_{int(index):02d}_{int(time.time() * 1000)}.{ext}"
     with open(os.path.join(IMAGES_DIR, fname), "wb") as f:
         f.write(img_bytes)
     return fname
@@ -238,8 +256,13 @@ def _extract_text(content, ext):
     return raw
 
 
-def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False):
-    """generations 端点：纯文本生图。"""
+def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page"):
+    """generations 端点：纯文本生图（纯逻辑，返回 dict，不依赖 Flask 上下文）。
+
+    返回 {"ok": True, "filename":..., "url":...} 或 {"ok": False, "error":...}。
+    prefix 决定落盘文件名前缀：页面图用 page_，风格母版候选图用 master_。
+    可在工作线程中安全调用（不触碰 jsonify / current_app）。
+    """
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     proxies = _proxy_cfg(skip_proxy)
 
@@ -257,7 +280,7 @@ def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_
             try:
                 r = requests.post(url, headers=headers, json=make_body(with_extra), timeout=300, proxies=proxies)
                 if r.status_code in (401, 403):
-                    return _err(f"鉴权失败（HTTP {r.status_code}）：{r.text[:300]}。请检查 Key 或 API 地址")
+                    return {"ok": False, "error": f"鉴权失败（HTTP {r.status_code}）：{r.text[:300]}。请检查 Key 或 API 地址"}
                 if r.status_code == 404:
                     last_err = f"HTTP 404：{r.text[:200]}（路径 {url} 不存在）"
                     break
@@ -274,8 +297,8 @@ def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_
                 if not img_bytes:
                     last_err = "接口返回里既没有 b64_json 也没有 url，可能是非标准中转站格式"
                     continue
-                fname = _save_image(img_bytes, index)
-                return _ok({"filename": fname, "url": f"/output/images/{fname}"})
+                fname = _save_image(img_bytes, index, prefix)
+                return {"ok": True, "filename": fname, "url": f"/output/images/{fname}"}
             except requests.exceptions.ProxyError as e:
                 proxy_err = True
                 last_err = ("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
@@ -289,7 +312,15 @@ def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_
                 continue
         if proxy_err:
             break
-    return _err(f"图片生成失败：{last_err}")
+    return {"ok": False, "error": f"图片生成失败：{last_err}"}
+
+
+def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page"):
+    """generations 端点视图包装：调纯逻辑函数并构造 Flask 响应（仅在请求线程调用）。"""
+    r = _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, prefix)
+    if r.get("ok"):
+        return _ok({"filename": r["filename"], "url": r["url"]})
+    return _err(r.get("error") or "图片生成失败")
 
 
 # 锁长相 / 锁风格指令：edits 端点把参考图作为强条件，约束后续出图
@@ -479,6 +510,93 @@ def upload_ref():
     with open(os.path.join(IMAGES_DIR, fname), "wb") as out:
         out.write(data)
     return _ok({"filename": fname, "url": f"/output/images/{fname}"})
+
+
+# ---------------------------------------------------------------------------
+# AI 生成风格母版（可选）：按风格意图生成 1~3 张候选样张
+# ---------------------------------------------------------------------------
+@app.route("/api/gen_style_master", methods=["POST"])
+def gen_style_master():
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("openai_key") or "").strip()
+    base_url = (data.get("openai_base_url") or "").strip().rstrip("/")
+    model = (data.get("openai_model") or data.get("model") or "gpt-image-2").strip()
+    size = data.get("size") or "1920x1080"
+    quality = data.get("quality") or "high"
+    fmt = data.get("format") or "png"
+    skip_proxy = data.get("skip_proxy") or False
+
+    style_desc = (data.get("style_desc") or "").strip()
+    pages = data.get("pages") or []
+    try:
+        count = int(data.get("count") or 2)
+    except Exception:
+        count = 2
+    count = max(1, min(3, count))
+
+    ds_key = (data.get("deepseek_key") or "").strip()
+    ds_base = (data.get("deepseek_base_url") or "https://api.deepseek.com").strip().rstrip("/")
+    ds_model = (data.get("deepseek_model") or "deepseek-chat").strip()
+
+    if not key:
+        return _err("请先填写 OpenAI API Key")
+    if not base_url:
+        return _err("请先填写 OpenAI API 地址")
+    if not style_desc and not pages:
+        return _err("请填写风格描述，或先添加页面内容以便自动归纳风格")
+
+    # 由 DeepSeek 把风格意图 → 英文母版生图 prompt（无 Key 则套固定模板）
+    prompt = None
+    if ds_key:
+        try:
+            if style_desc:
+                user_msg = f"风格意图：{style_desc}"
+            else:
+                joined = "\n".join([p for p in pages if p][:20])
+                user_msg = ("以下是若干页课件的内容描述，请据此归纳适合的整体视觉风格"
+                            "并输出母版提示词：\n\n" + joined)
+            prompt = _call_deepseek(ds_key, ds_base, ds_model, STYLE_MASTER_SYSTEM, user_msg,
+                                    temperature=0.7, max_tokens=900, skip_proxy=skip_proxy)
+            prompt = (prompt or "").strip() or None
+        except Exception as e:  # noqa: BLE001
+            return _err(f"风格归纳失败：{e}")
+
+    if not prompt:
+        intent = style_desc or "modern minimal teaching slide style"
+        prompt = (
+            "A 16:9 presentation slide master design sheet, NO readable text content. "
+            "Visual style: " + intent + ". "
+            "Consistent color palette, background texture, typography, decorative motifs, "
+            "iconography, layout grid, lighting and whitespace. "
+            "Clean, professional, suitable for classroom teaching slides. "
+            "No letters, no words, no captions — purely a visual style reference."
+        )
+
+    # 并发生成 count 张候选样张（master_ 前缀，避免与页面图混淆）
+    results = [None] * count
+
+    def _one(i):
+        return i, _text2img_once(key, base_url, model, prompt, size, quality, fmt, i,
+                                 skip_proxy=skip_proxy, prefix="master")
+
+    with ThreadPoolExecutor(max_workers=count) as ex:
+        futs = [ex.submit(_one, i) for i in range(count)]
+        for fu in as_completed(futs):
+            i, payload = fu.result()
+            results[i] = payload
+
+    candidates = []
+    last_err = None
+    for payload in results:
+        if not payload:
+            continue
+        if payload.get("ok"):
+            candidates.append({"filename": payload["filename"], "url": payload["url"]})
+        else:
+            last_err = payload.get("error")
+    if not candidates:
+        return _err(last_err or "候选图生成失败")
+    return _ok({"candidates": candidates})
 
 
 # ---------------------------------------------------------------------------

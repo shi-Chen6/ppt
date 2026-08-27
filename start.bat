@@ -1,52 +1,55 @@
 @echo off
+chcp 65001 >nul
+set PYTHONUTF8=1
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
-title PPT ÖÇÄÜÉú³É¹¤¾ß
+title PPT æ™ºèƒ½ç”Ÿæˆå·¥å…·
 
 echo ============================================
-echo    PPT ÖÇÄÜÉú³É¹¤¾ß - Ò»¼üÆô¶¯
+echo    PPT æ™ºèƒ½ç”Ÿæˆå·¥å…· - ä¸€é”®å¯åŠ¨
 echo ============================================
 echo.
 
-rem ---- 1) Èô·þÎñÒÑÔÚÔËÐÐ£¬Ö±½Ó´ò¿ªÒ³Ãæ ----
+rem ---- 1) æ£€æŸ¥æœåŠ¡æ˜¯å¦åœ¨è¿è¡Œï¼Œå·²åœ¨è·‘åˆ™ç›´æŽ¥æ‰“å¼€ç½‘é¡µ ----
 curl -s -o nul -m 2 http://127.0.0.1:5000/ 2>nul
 if not errorlevel 1 (
-    echo ·þÎñÒÑÔÚÔËÐÐ£¬Ö±½Ó´ò¿ªÒ³Ãæ...
+    echo æœåŠ¡å·²åœ¨è¿è¡Œï¼Œç›´æŽ¥æ‰“å¼€ç½‘é¡µ...
     start "" http://127.0.0.1:5000
     exit /b 0
 )
 
-rem ---- 2) Ñ¡Ôñ Python£¨ÓÅÏÈÏµÍ³×Ô´øµÄ 3.12£¬ÒÀÀµ×îÈ«£©----
-set "PY=C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe"
+rem ---- 2) é€‰æ‹© Pythonï¼šä¼˜å…ˆé¡¹ç›® .venvï¼Œå…¶æ¬¡ç³»ç»Ÿè‡ªå¸¦ Python 3.12 ----
+set "PY=%~dp0.venv\Scripts\python.exe"
+if not exist "!PY!" set "PY=C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe"
 if not exist "!PY!" (
     where python >nul 2>nul
     if not errorlevel 1 ( set "PY=python" ) else ( set "PY=" )
 )
 if not defined PY (
-    echo [´íÎó] Î´ÕÒµ½ Python£¬ÇëÏÈ°²×° Python 3.10 ¼°ÒÔÉÏ°æ±¾¡£
+    echo [é”™è¯¯] æœªæ‰¾åˆ° Pythonï¼Œè¯·å…ˆå®‰è£… Python 3.10 æˆ–ä»¥ä¸Šç‰ˆæœ¬ã€‚
     pause
     exit /b 1
 )
-echo Ê¹ÓÃ Python: !PY!
+echo ä½¿ç”¨ Python: !PY!
 
-rem ---- 3) ¼ì²éÒÀÀµ£¬È±Ê§Ôò×Ô¶¯°²×° ----
+rem ---- 3) æ£€æŸ¥ä¾èµ–æ˜¯å¦ç¼ºå¤±ï¼Œè‡ªåŠ¨å®‰è£… ----
 "!PY!" -c "import flask, requests, pptx, docx, PIL, matplotlib" 2>nul
 if errorlevel 1 (
-    echo ¼ì²âµ½ÒÀÀµÈ±Ê§£¬ÕýÔÚ×Ô¶¯°²×°£¨Ê×´Î½ÏÂý£¬ÇëÉÔºò£©...
+    echo æ£€æµ‹åˆ°ä¾èµ–ç¼ºå¤±ï¼Œæ­£åœ¨è‡ªåŠ¨å®‰è£…ï¼ˆé¦–æ¬¡è¾ƒæ…¢ï¼Œè¯·ç¨å€™ï¼‰...
     "!PY!" -m pip install -r requirements.txt
     if errorlevel 1 (
-        echo [´íÎó] ÒÀÀµ°²×°Ê§°Ü£¬Çë¼ì²éÍøÂçºóÖØÊÔ¡£
+        echo [é”™è¯¯] ä¾èµ–å®‰è£…å¤±è´¥ï¼Œè¯·æ£€æŸ¥ç½‘ç»œåŽé‡è¯•ã€‚
         pause
         exit /b 1
     )
 )
 
-rem ---- 4) Æô¶¯·þÎñ£¬ÉÔºó×Ô¶¯´ò¿ªä¯ÀÀÆ÷ ----
-echo ÕýÔÚÆô¶¯·þÎñ£¬ÉÔºó»á×Ô¶¯´ò¿ª http://127.0.0.1:5000
-echo £¨Æô¶¯ºóÇëÎð¹Ø±Õ±¾´°¿Ú£¬°´ Ctrl+C ¿ÉÍ£Ö¹·þÎñ£©
+rem ---- 4) å¯åŠ¨æœåŠ¡ï¼Œç¨åŽè‡ªåŠ¨æ‰“å¼€æµè§ˆå™¨ ----
+echo æœåŠ¡å¯åŠ¨ä¸­ï¼Œç¨åŽè‡ªåŠ¨æ‰“å¼€ http://127.0.0.1:5000
+echo å¦‚éœ€å…³é—­æœåŠ¡ï¼šä¿ç•™æœ¬çª—å£ï¼ŒæŒ‰ Ctrl+C ç»ˆæ­¢æœåŠ¡
 start "" /min cmd /c "timeout /t 4 >nul & start http://127.0.0.1:5000"
 "!PY!" app.py
 
 echo.
-echo ·þÎñÒÑÍ£Ö¹¡£°´ÈÎÒâ¼ü¹Ø±Õ´°¿Ú...
+echo æœåŠ¡å·²åœæ­¢ï¼ŒæŒ‰ä»»æ„é”®å…³é—­çª—å£...
 pause >nul

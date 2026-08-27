@@ -1,0 +1,15 @@
+# Python virtual environments (recreatable from requirements.txt)
+venv/
+.venv/
+.venv_test/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# WorkBuddy internal project data
+.workbuddy/
+
+# Generated output (regenerable)
+output/
