@@ -141,7 +141,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>PPT 智能生成工具 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400;"><img src="https://img.meituan.net/content/1287b66686c7dbbbec4fa47fafdd803631203.jpg" alt="CZT" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">作者：CZT</span></h1>
+    <h1>PPT 智能生成工具 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400;"><img src="https://img.meituan.net/content/1287b66686c7dbbbec4fa47fafdd803631203.jpg" alt="CZT" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">作者：CZT ©2026</span></h1>
     <p>上传文档 / 粘贴内容 → 生成大纲与文案 → gpt-image-2 生成 16:9 页面 → 拼成 PPTX（可锁人物长相）</p>
   </header>
 
@@ -278,12 +278,17 @@
     <div id="refPreview" class="ref-box" style="margin-top:10px"></div>
 
     <h3 style="margin-top:18px;">AI 生成风格母版（可选）</h3>
-    <div class="hint" style="margin-top:0">写一句风格意图，或点选下方预设，生成 1~3 张候选样张，挑一张设为母版。也可留空，由系统根据已填页面内容自动归纳。</div>
+    <div class="hint" style="margin-top:0">写一句风格意图，或点选下方预设，先用 DeepSeek 优化成英文生图提示词，可手动微调后再生成 1~3 张候选样张。</div>
     <div style="margin-top:8px;">
       <label>风格描述（可空，留空则自动归纳）</label>
       <textarea id="style_desc" placeholder="例：信息技术课件，深蓝科技风，几何线条与网络节点装饰，扁平插画，留白多" style="min-height:52px;"></textarea>
     </div>
     <div class="sm-chips" id="stylePresets"></div>
+    <div class="opt-row" style="margin-top:8px;">
+      <label style="margin:0;">优化后的风格提示词（可手动编辑，再生成候选）</label>
+      <button type="button" class="ghost" id="optStyleBtn" onclick="optimizeStylePrompt()">优化风格提示词</button>
+    </div>
+    <textarea id="style_prompt" placeholder="点上方「优化风格提示词」由 DeepSeek 生成英文母版提示词；留空则后端自动优化" style="min-height:88px; font-family:monospace; font-size:12px;"></textarea>
     <div class="key-row" style="margin-top:10px; max-width:420px;">
       <label style="margin:0; white-space:nowrap;">生成数量</label>
       <select id="style_count" style="width:auto;">
@@ -328,7 +333,7 @@
   </div>
 </div>
 
-<footer style="text-align:center; padding: 18px 0 26px; color: var(--muted); font-size: 12px;">©CZT</footer>
+<footer style="text-align:center; padding: 18px 0 26px; color: var(--muted); font-size: 12px;">©2026 czt · PPT 智能生成工具</footer>
 
 <div class="toast" id="toast"></div>
 
@@ -711,17 +716,41 @@ function renderStylePresets() {
 function applyPreset(i) {
   if (STYLE_PRESETS[i]) $('style_desc').value = STYLE_PRESETS[i][0];
 }
+async function optimizeStylePrompt() {
+  const s = getSettings();
+  if (!s.deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  const styleDesc = $('style_desc').value.trim();
+  let pages = null;
+  if (!styleDesc) {
+    pages = state.pages.map((p) => (p.description || p.title || '').trim()).filter(Boolean);
+    if (!pages.length) { toast('请填写风格描述，或先添加页面内容以便自动归纳', true); return; }
+  }
+  const btn = $('optStyleBtn');
+  const oldText = btn.textContent;
+  btn.disabled = true; btn.textContent = '优化中…';
+  try {
+    const body = Object.assign(dsBody(s), { style_desc: styleDesc, pages });
+    const data = await postJson('/api/optimize_style_prompt', body);
+    $('style_prompt').value = data.prompt || '';
+    toast('风格提示词已生成，可在编辑后点「生成候选」');
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = oldText;
+  }
+}
 async function genStyleMaster() {
   syncInputs();
   const s = getSettings();
   if (!s.openai_key) { toast('请先填写 OpenAI Key', true); return; }
   if (!s.openai_base_url) { toast('请先填写 OpenAI API 地址', true); return; }
   const styleDesc = $('style_desc').value.trim();
+  const stylePrompt = $('style_prompt').value.trim();
   const count = parseInt($('style_count').value, 10) || 2;
   let pages = null;
-  if (!styleDesc) {
+  if (!styleDesc && !stylePrompt) {
     pages = state.pages.map((p) => (p.description || p.title || '').trim()).filter(Boolean);
-    if (!pages.length) { toast('请填写风格描述，或先添加页面内容以便自动归纳', true); return; }
+    if (!pages.length) { toast('请填写风格描述或风格提示词，或先添加页面内容以便自动归纳', true); return; }
   }
   const btn = $('genStyleBtn');
   const oldText = btn.textContent;
@@ -732,6 +761,7 @@ async function genStyleMaster() {
       size: s.img_size, quality: s.img_quality, format: 'png', skip_proxy: s.skip_proxy,
       count, style_desc: styleDesc,
       deepseek_key: s.deepseek_key, deepseek_base_url: s.deepseek_base_url, deepseek_model: s.deepseek_model,
+      prompt: stylePrompt,
       pages,
     };
     const data = await postJson('/api/gen_style_master', body);

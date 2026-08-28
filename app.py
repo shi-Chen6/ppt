@@ -515,6 +515,43 @@ def upload_ref():
 # ---------------------------------------------------------------------------
 # AI 生成风格母版（可选）：按风格意图生成 1~3 张候选样张
 # ---------------------------------------------------------------------------
+@app.route("/api/optimize_style_prompt", methods=["POST"])
+def optimize_style_prompt():
+    """仅调用 DeepSeek 把风格意图 → 英文母版生图 prompt，便于前端预览与编辑后再生图。
+
+    与 /api/optimize（页面级）对应，但本接口使用 STYLE_MASTER_SYSTEM，
+    输出的是不含具体文字、纯视觉风格的母版提示词。
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("deepseek_key") or "").strip()
+    base_url = (data.get("deepseek_base_url") or "https://api.deepseek.com").strip().rstrip("/")
+    model = (data.get("deepseek_model") or "deepseek-chat").strip()
+    style_desc = (data.get("style_desc") or "").strip()
+    pages = data.get("pages") or []
+    skip_proxy = data.get("skip_proxy") or False
+
+    if not key:
+        return _err("请先填写 DeepSeek API Key")
+    if not style_desc and not pages:
+        return _err("请填写风格描述，或先添加页面内容以便自动归纳风格")
+
+    try:
+        if style_desc:
+            user_msg = f"风格意图：{style_desc}"
+        else:
+            joined = "\n".join([p for p in pages if p][:20])
+            user_msg = ("以下是若干页课件的内容描述，请据此归纳适合的整体视觉风格"
+                        "并输出母版提示词：\n\n" + joined)
+        prompt = _call_deepseek(key, base_url, model, STYLE_MASTER_SYSTEM, user_msg,
+                                temperature=0.7, max_tokens=900, skip_proxy=skip_proxy)
+        prompt = (prompt or "").strip()
+        if not prompt:
+            return _err("DeepSeek 返回空提示词，请重试")
+        return _ok({"prompt": prompt})
+    except Exception as e:  # noqa: BLE001
+        return _err(f"风格提示词优化失败：{e}", 500)
+
+
 @app.route("/api/gen_style_master", methods=["POST"])
 def gen_style_master():
     data = request.get_json(force=True, silent=True) or {}
@@ -545,9 +582,9 @@ def gen_style_master():
     if not style_desc and not pages:
         return _err("请填写风格描述，或先添加页面内容以便自动归纳风格")
 
-    # 由 DeepSeek 把风格意图 → 英文母版生图 prompt（无 Key 则套固定模板）
-    prompt = None
-    if ds_key:
+    # 优先使用前端传来的「已优化提示词」（用户可见并可编辑）；否则现场由 DeepSeek 优化
+    prompt = (data.get("prompt") or "").strip()
+    if not prompt and ds_key:
         try:
             if style_desc:
                 user_msg = f"风格意图：{style_desc}"

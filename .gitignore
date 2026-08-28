@@ -13,3 +13,10 @@ __pycache__/
 
 # Generated output (regenerable)
 output/
+
+# Build artifacts (regenerable via build_exe.py)
+build/
+dist/
+
+# Personal Windows shortcut (not project source)
+GitHub.lnk
