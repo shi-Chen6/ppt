@@ -136,6 +136,37 @@
   .toast.err { background: var(--red); }
   .toast.show { display: block; }
   @media (max-width: 720px) { .page-body { grid-template-columns: 1fr; } }
+
+  /* 历史记录 */
+  .hist-item {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: #fafbfd;
+  }
+  .hist-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .hist-name { flex: 1; min-width: 160px; font-weight: 500; font-size: 14px; }
+  .hist-meta { font-size: 12px; color: var(--muted); }
+  .hist-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .hist-empty { font-size: 13px; color: var(--muted); padding: 12px 4px; }
+  .hist-badge {
+    display: inline-block; font-size: 11px; padding: 1px 8px;
+    border-radius: 20px; border: 1px solid var(--border); color: var(--muted);
+    background: #fff;
+  }
+  /* 遮罩 + 弹窗 */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 900;
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-mask.show { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 12px; padding: 20px; width: 92%;
+    max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,.2);
+  }
+  .modal-box h3 { margin: 0 0 12px; font-size: 16px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
 </style>
 </head>
 <body>
@@ -207,9 +238,33 @@
           <option value="low">low（快/省）</option>
         </select>
       </div>
+      <div>
+        <label>同时生图并发数</label>
+        <select id="gen_concurrency">
+          <option value="1" selected>1（串行，稳定）</option>
+          <option value="2">2（推荐）</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="12">12</option>
+          <option value="15">15</option>
+          <option value="20">20</option>
+        </select>
+        <div class="hint">建议 2~3；设太高容易被中转站限流（429）或超时，反而更慢。</div>
+      </div>
       <div style="grid-column: 1 / -1;">
         <label>统一视觉风格（可选，附加到每一页）</label>
         <input type="text" id="global_style" placeholder="例如：清新卡通插画风，明快配色，适合中小学生">
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label>输出文件保存路径（留空则保存到默认 output 目录）</label>
+        <input type="text" id="output_dir" placeholder="例如：D:\我的PPT  或  留空使用默认路径">
+        <div class="hint">生成的 PPTX 与 图片 ZIP 将保存到此目录；目录不存在会自动创建。</div>
       </div>
       <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; margin-top:2px;">
         <input type="checkbox" id="skip_proxy" style="width:auto;">
@@ -221,6 +276,20 @@
       <button type="button" onclick="clearSettings()">清空设置</button>
     </div>
     <div class="hint">Key 仅保存在你浏览器本地（localStorage），不会上传到任何第三方服务器。</div>
+  </div>
+
+  <!-- 1.5 历史记录 -->
+  <div class="card">
+    <h2>①⁺ 历史记录 <span style="font-size:12px;color:var(--muted);font-weight:400;">（最多 20 条，保存在本机浏览器）</span></h2>
+    <div class="toolbar" style="margin-bottom: 12px;">
+      <button type="button" class="primary" onclick="saveHistoryDialog()">💾 保存当前状态为历史记录</button>
+      <button type="button" class="ghost" onclick="exportHistory()">⬇ 导出全部（JSON）</button>
+      <button type="button" class="ghost" onclick="document.getElementById('histImportFile').click()">⬆ 导入（JSON）</button>
+      <input type="file" id="histImportFile" accept=".json,application/json" style="display:none;" onchange="importHistory(event)">
+      <div class="spacer"></div>
+      <span class="hint" style="margin:0;" id="histCountHint"></span>
+    </div>
+    <div id="historyList"></div>
   </div>
 
   <!-- ② 智能生成：文档 → PPT -->
@@ -329,13 +398,19 @@
       <button type="button" onclick="downloadPrompts()">下载提示词（MD）</button>
     </div>
     <div class="result-links" id="resultLinks"></div>
-    <div class="hint">PPT 为 16:9 宽屏，每页一张全屏图，图片与幻灯片比例完全一致、无拉伸变形。</div>
+    <div id="resultPath" style="font-size:12px; color:var(--muted); margin-top:8px; word-break:break-all;"></div>
+    <div class="hint">PPT 为 16:9 宽屏，每页一张全屏图，图片与幻灯片比例完全一致、无拉伸变形。输出路径可在「① API 设置」中修改。</div>
   </div>
 </div>
 
 <footer style="text-align:center; padding: 18px 0 26px; color: var(--muted); font-size: 12px;">©2026 czt · PPT 智能生成工具</footer>
 
 <div class="toast" id="toast"></div>
+
+<!-- 通用弹窗 -->
+<div class="modal-mask" id="modalMask" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box" id="modalBox"></div>
+</div>
 
 <script>
 const state = {
@@ -423,6 +498,8 @@ function getSettings() {
     auto_master: $('auto_master').checked,
     skip_proxy: $('skip_proxy').checked,
     style_count: $('style_count') ? $('style_count').value : '2',
+    output_dir: $('output_dir').value.trim(),
+    gen_concurrency: parseInt($('gen_concurrency').value, 10) || 1,
   };
 }
 
@@ -455,6 +532,9 @@ function loadSettings() {
   $('auto_master').checked = !!(s && s.auto_master);
   $('skip_proxy').checked = !!(s && s.skip_proxy);
   if ($('style_count')) $('style_count').value = (s && s.style_count) || '2';
+  $('output_dir').value = (s && s.output_dir) || '';
+  const cc = parseInt((s && s.gen_concurrency), 10);
+  $('gen_concurrency').value = (cc >= 1 && cc <= 20) ? String(cc) : '1';
 }
 function clearSettings() {
   localStorage.removeItem('ppt_tool_settings');
@@ -471,6 +551,8 @@ function clearSettings() {
   $('auto_master').checked = false;
   $('skip_proxy').checked = false;
   if ($('style_count')) $('style_count').value = '2';
+  $('output_dir').value = '';
+  $('gen_concurrency').value = '1';
   toast('已清空本地所有设置，请重新填写 API 地址与 Key');
 }
 
@@ -978,41 +1060,129 @@ async function generatePage(id) {
   renderPages();
 }
 
+// 并发池工具：按指定并发数依次执行 tasks（返回 Promise 的函数数组），
+// 所有任务都执行完毕后返回 {done, errors}，中途不中断。
+async function runPool(tasks, concurrency, onProgress) {
+  const total = tasks.length;
+  let finished = 0;
+  let errors = 0;
+  let idx = 0;
+
+  async function worker() {
+    while (idx < total) {
+      const myIdx = idx++;
+      const task = tasks[myIdx];
+      try {
+        await task();
+      } catch (e) {
+        errors++;
+      }
+      finished++;
+      if (typeof onProgress === 'function') {
+        try { onProgress(finished, total, errors); } catch (_) {}
+      }
+    }
+  }
+
+  const n = Math.max(1, Math.min(concurrency || 1, total || 1));
+  const workers = [];
+  for (let i = 0; i < n; i++) workers.push(worker());
+  await Promise.all(workers);
+  return { done: finished - errors, errors, total };
+}
+
 async function generateAll() {
   syncInputs();
-  const targets = state.pages.filter(isRenderable);
-  if (!targets.length) { toast('请先优化提示词，或为精确图表准备数据', true); return; }
+  const s = getSettings();
+  const concurrency = Math.max(1, Math.min(20, parseInt(s.gen_concurrency, 10) || 1));
+
+  // 按页面原顺序收集所有「可渲染」的页面
+  const renderablePages = state.pages.filter(isRenderable);
+  if (!renderablePages.length) { toast('请先优化提示词，或为精确图表准备数据', true); return; }
   const needKey = state.pages.some((p) => isRenderable(p) && !(PRECISE_CHARTS.includes(p.chart) && p.chart_data));
-  if (needKey && !getSettings().openai_key) { toast('请先填写 OpenAI Key', true); return; }
+  if (needKey && !s.openai_key) { toast('请先填写 OpenAI Key', true); return; }
+
   const autoMaster = $('auto_master').checked;
-  let done = 0;
-  for (const p of state.pages) {
-    if (!isRenderable(p)) continue;
-    progress(done, targets.length, `生成图片 ${done + 1}/${targets.length}`);
-    await generatePage(p.id);
-    if (p.status === 'err') break;
-    // 首图自动当母版：第一张真实生图完成后，把它设为后续页面的风格母版
-    const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
-    if (autoMaster && !state.refImage && !isPrecise && p.imageFile) {
-      state.refImage = p.imageFile;
-      state.refUrl = p.imageUrl;
+  const total = renderablePages.length;
+  let finishedCount = 0;
+  let errorCount = 0;
+
+  // 用于把 progress + 状态汇总推送给 UI（每次任意任务完成后调用）
+  function updateProgress(fin, tot, errs) {
+    finishedCount = fin; errorCount = errs || 0;
+    const status = `生成图片 ${finishedCount}/${tot}` + (errorCount ? `（失败 ${errorCount}）` : '');
+    progress(finishedCount, tot, status);
+  }
+
+  // ------- 首图自动当母版：先串行完成第一张非精确图表的页面 -------
+  // 选出需要先单独串行跑的「首图」
+  let firstMasterPage = null;
+  if (autoMaster && !state.refImage) {
+    firstMasterPage = renderablePages.find((p) => {
+      const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
+      return !isPrecise;  // 精确图表没有 AI 风格，不适合当母版
+    });
+  }
+
+  // 构建「并发池任务列表」：首图（若存在）先从列表里剔除，等串行完成后再一起并发剩余
+  let remaining = renderablePages.slice();
+  if (firstMasterPage) {
+    remaining = remaining.filter((p) => p.id !== firstMasterPage.id);
+    progress(0, total, '首图作母版生成中 1/1');
+    try {
+      await generatePage(firstMasterPage.id);
+    } catch (_) { /* generatePage 内部已经 toast，这里继续不中断 */ }
+    finishedCount = 1;
+    if (firstMasterPage.status === 'err') errorCount = 1;
+    // 设置母版（即使失败也不抛错，只是后续页面没母版可用而已）
+    const isPrecise = PRECISE_CHARTS.includes(firstMasterPage.chart) && firstMasterPage.chart_data;
+    if (!state.refImage && !isPrecise && firstMasterPage.imageFile) {
+      state.refImage = firstMasterPage.imageFile;
+      state.refUrl = firstMasterPage.imageUrl;
       renderRef();
       toast('已把首图设为风格母版，后续页面将沿用其风格');
     }
-    done++;
+    updateProgress(finishedCount, total, errorCount);
   }
-  progress(targets.length, targets.length, '全部图片生成完成');
-  setTimeout(hideProgress, 1500);
+
+  // ------- 剩余页面按并发池跑（失败不中断） -------
+  if (remaining.length) {
+    const tasks = remaining.map((p) => async () => {
+      try {
+        await generatePage(p.id);
+      } catch (_) {
+        // generatePage 已经 toast 并设置 status='err'
+      }
+    });
+    await runPool(tasks, concurrency, (fin, _, errs) => {
+      // fin 是「并发池内部已完成数」，要加上已完成的首图
+      const totFin = finishedCount + fin;
+      // 错误数 = 首图是否 err + 池内累计 err
+      const totErr = (firstMasterPage && firstMasterPage.status === 'err' ? 1 : 0) + errs;
+      updateProgress(totFin, total, totErr);
+    });
+  }
+
+  // 最终统计（重新扫一遍 state.pages 以保证准确）
+  const okCount = renderablePages.filter((p) => p.status === 'ok').length;
+  const badCount = renderablePages.filter((p) => p.status === 'err').length;
+  const finalMsg = `图片生成完毕：成功 ${okCount} 张` + (badCount ? `，失败 ${badCount} 张` : '');
+  progress(total, total, finalMsg);
+  setTimeout(hideProgress, 2000);
+  if (badCount) toast(finalMsg + '。失败页可单独点「生成图片」重试', true);
+  else toast(finalMsg);
 }
 
 async function buildPpt() {
   syncInputs();
   const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
   if (!images.length) { toast('还没有生成任何图片', true); return; }
+  const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/build_ppt', { images, title: '演示文稿' });
+    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir });
     showResult([{ label: '下载 PPTX', url: data.url, cls: '' }]);
-    toast('PPT 已生成');
+    showResultPath(data.abs_path);
+    toast(data.abs_path ? 'PPT 已生成：' + data.abs_path : 'PPT 已生成');
   } catch (e) {
     toast(e.message, true);
   }
@@ -1022,13 +1192,21 @@ async function zipImages() {
   syncInputs();
   const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
   if (!images.length) { toast('还没有生成任何图片', true); return; }
+  const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/zip_images', { images });
+    const data = await postJson('/api/zip_images', { images, output_dir: outputDir });
     showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip' }]);
-    toast('图片已打包');
+    showResultPath(data.abs_path);
+    toast(data.abs_path ? '图片已打包：' + data.abs_path : '图片已打包');
   } catch (e) {
     toast(e.message, true);
   }
+}
+
+function showResultPath(absPath) {
+  const box = $('resultPath');
+  if (!box) return;
+  box.textContent = absPath ? '保存位置：' + absPath : '';
 }
 
 function showResult(links) {
@@ -1070,10 +1248,324 @@ function downloadPrompts() {
   toast(`已导出 ${rows.length} 页提示词${skipped ? `（跳过 ${skipped} 页无提示词）` : ''}`);
 }
 
+// ---------------- 通用弹窗 ----------------
+function openModal(html) {
+  $('modalBox').innerHTML = html;
+  $('modalMask').classList.add('show');
+}
+function closeModal() {
+  $('modalMask').classList.remove('show');
+  $('modalBox').innerHTML = '';
+}
+
+// ---------------- 历史记录 ----------------
+const HIST_KEY = 'ppt_tool_history_v1';
+const HIST_LIMIT = 20;
+
+function loadHistories() {
+  try {
+    const raw = localStorage.getItem(HIST_KEY) || '[]';
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+function saveHistories(list) {
+  // 上限保护：只保留最新 HIST_LIMIT 条
+  const trimmed = (list || []).slice(-HIST_LIMIT);
+  try {
+    localStorage.setItem(HIST_KEY, JSON.stringify(trimmed));
+    return true;
+  } catch (e) {
+    toast('保存失败：' + (e && e.message ? e.message : '浏览器存储可能已满'), true);
+    return false;
+  }
+}
+function fmtDate(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// 保存当前状态
+function captureSnapshot() {
+  // 先把输入框的内容同步到 state
+  syncInputs();
+  // 注意：pages 里每个字段都手动列出，避免把 transient 字段（busy 等）当作快照
+  return {
+    schemaVersion: 1,
+    savedAt: Date.now(),
+    settings: getSettings(),   // 所有 ① 中的设置项
+    workState: {
+      pages: state.pages.map((p) => ({
+        id: p.id, title: p.title, description: p.description, prompt: p.prompt,
+        chart: p.chart || '', chart_data: p.chart_data || null,
+        imageUrl: p.imageUrl || '', imageFile: p.imageFile || '', status: p.status || '',
+      })),
+      nextId: state.nextId,
+      docText: state.docText || '',
+      outline: state.outline || [],
+      pagesContent: state.pagesContent || [],
+      refImage: state.refImage || '',
+      refUrl: state.refUrl || '',
+      styleCandidates: state.styleCandidates || [],
+    },
+  };
+}
+
+function saveHistoryDialog() {
+  syncInputs();
+  const defaultName = (state.pages.length ? `${state.pages.length}页 · ` : '快照 · ') + fmtDate(Date.now());
+  openModal(`
+    <h3>保存为历史记录</h3>
+    <label>记录名称</label>
+    <input type="text" id="histSaveName" value="${escapeHtml(defaultName)}" placeholder="留空则自动按时间命名" style="margin-bottom:6px;">
+    <div class="hint">将保存：所有 API 设置、文档/大纲/文案、风格母版、页面列表（标题/描述/提示词/图表/生成的图片引用）。</div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeModal()">取消</button>
+      <button type="button" class="primary" onclick="doSaveHistory()">保存</button>
+    </div>
+  `);
+  setTimeout(() => { const el = $('histSaveName'); if (el) { el.focus(); el.select(); } }, 30);
+}
+
+function doSaveHistory() {
+  const nameEl = $('histSaveName');
+  const name = (nameEl ? nameEl.value : '').trim() || ('快照 · ' + fmtDate(Date.now()));
+  const snap = captureSnapshot();
+  snap.name = name;
+  const list = loadHistories();
+  list.push(snap);
+  if (!saveHistories(list)) return;
+  closeModal();
+  renderHistory();
+  toast('已保存为历史记录「' + name + '」');
+}
+
+function renameHistory(id) {
+  const list = loadHistories();
+  const idx = list.findIndex((h) => h.savedAt === id);
+  if (idx < 0) { toast('记录不存在', true); return; }
+  openModal(`
+    <h3>重命名记录</h3>
+    <label>新名称</label>
+    <input type="text" id="histRenameName" value="${escapeHtml(list[idx].name || '')}" style="margin-bottom:6px;">
+    <div class="modal-actions">
+      <button type="button" onclick="closeModal()">取消</button>
+      <button type="button" class="primary" onclick="doRenameHistory(${id})">确认</button>
+    </div>
+  `);
+  setTimeout(() => { const el = $('histRenameName'); if (el) { el.focus(); el.select(); } }, 30);
+}
+function doRenameHistory(id) {
+  const el = $('histRenameName');
+  const newName = (el ? el.value : '').trim() || ('快照 · ' + fmtDate(id));
+  const list = loadHistories();
+  const idx = list.findIndex((h) => h.savedAt === id);
+  if (idx < 0) { toast('记录不存在', true); return; }
+  list[idx].name = newName;
+  saveHistories(list);
+  closeModal();
+  renderHistory();
+  toast('已重命名');
+}
+
+function deleteHistory(id) {
+  const list = loadHistories();
+  const idx = list.findIndex((h) => h.savedAt === id);
+  if (idx < 0) { toast('记录不存在', true); return; }
+  const name = list[idx].name || '(未命名)';
+  openModal(`
+    <h3>删除确认</h3>
+    <div style="font-size:14px;">确定要删除历史记录「${escapeHtml(name)}」吗？此操作不可撤销。</div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeModal()">取消</button>
+      <button type="button" class="danger" onclick="doDeleteHistory(${id})">删除</button>
+    </div>
+  `);
+}
+function doDeleteHistory(id) {
+  let list = loadHistories();
+  list = list.filter((h) => h.savedAt !== id);
+  saveHistories(list);
+  closeModal();
+  renderHistory();
+  toast('已删除');
+}
+
+// 恢复历史记录
+function restoreHistory(id) {
+  const list = loadHistories();
+  const snap = list.find((h) => h.savedAt === id);
+  if (!snap) { toast('记录不存在', true); return; }
+  openModal(`
+    <h3>恢复确认</h3>
+    <div style="font-size:14px;">
+      即将恢复记录「${escapeHtml(snap.name || '')}」。<br>
+      <span style="color:var(--red);">当前未保存的工作内容将被覆盖</span>，确定继续吗？
+    </div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeModal()">取消</button>
+      <button type="button" class="primary" onclick="doRestoreHistory(${id})">恢复</button>
+    </div>
+  `);
+}
+function doRestoreHistory(id) {
+  const list = loadHistories();
+  const snap = list.find((h) => h.savedAt === id);
+  if (!snap) { toast('记录不存在', true); return; }
+
+  const s = (snap.settings && typeof snap.settings === 'object') ? snap.settings : {};
+  // 恢复设置到输入框
+  $('openai_base_url').value = s.openai_base_url || '';
+  $('openai_key').value = s.openai_key || '';
+  $('openai_model').value = s.openai_model || 'gpt-image-2';
+  $('deepseek_base_url').value = s.deepseek_base_url || 'https://api.deepseek.com';
+  $('deepseek_key').value = s.deepseek_key || '';
+  $('deepseek_model').value = s.deepseek_model || 'deepseek-chat';
+  $('img_size').value = s.img_size || '1920x1080';
+  $('img_quality').value = s.img_quality || 'high';
+  $('global_style').value = s.global_style || '';
+  $('lock_scope').value = s.lock_scope || 'style';
+  $('auto_master').checked = !!s.auto_master;
+  $('skip_proxy').checked = !!s.skip_proxy;
+  if ($('style_count')) $('style_count').value = s.style_count || '2';
+  $('output_dir').value = s.output_dir || '';
+
+  const ws = (snap.workState && typeof snap.workState === 'object') ? snap.workState : {};
+  state.nextId = ws.nextId || 1;
+  state.pages = Array.isArray(ws.pages) ? ws.pages : [];
+  state.docText = ws.docText || '';
+  state.outline = Array.isArray(ws.outline) ? ws.outline : [];
+  state.pagesContent = Array.isArray(ws.pagesContent) ? ws.pagesContent : [];
+  state.refImage = ws.refImage || '';
+  state.refUrl = ws.refUrl || '';
+  state.styleCandidates = Array.isArray(ws.styleCandidates) ? ws.styleCandidates : [];
+
+  // 重新渲染全部区域
+  renderDoc();
+  renderOutline();  // 大纲/文案若为空则 renderDoc/renderOutline/renderContent 自动不显示
+  renderContent();
+  renderRef();
+  renderCandidates();
+  renderPages();
+
+  closeModal();
+  // 自动保存设置（使已恢复的设置项也跟随 「保存到本机」逻辑一致）
+  saveSettings();
+  toast('已恢复到「' + (snap.name || '该快照') + '」');
+}
+
+// 渲染列表
+function renderHistory() {
+  const list = loadHistories().slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  const hint = $('histCountHint');
+  if (hint) hint.textContent = `共 ${list.length} / ${HIST_LIMIT} 条`;
+  const box = $('historyList');
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = '<div class="hist-empty">暂无历史记录。点「保存当前状态为历史记录」来创建一条。</div>';
+    return;
+  }
+  box.innerHTML = list.map((h) => {
+    const ws = h.workState || {};
+    const pageCount = (ws.pages && ws.pages.length) || 0;
+    const imgCount = (ws.pages || []).filter((p) => p && p.imageFile).length;
+    const hasDoc = (ws.docText && ws.docText.length) || (ws.outline && ws.outline.length) ? true : false;
+    const hasMaster = ws.refImage ? true : false;
+    return `
+      <div class="hist-item">
+        <div class="hist-head">
+          <div class="hist-name">${escapeHtml(h.name || '(未命名)')}</div>
+          <div class="hist-meta">${fmtDate(h.savedAt || 0)}</div>
+        </div>
+        <div class="hist-head" style="margin-top:4px; gap:6px;">
+          <span class="hist-badge">${pageCount} 页</span>
+          ${imgCount ? `<span class="hist-badge ok">图 ${imgCount}</span>` : ''}
+          ${hasDoc ? `<span class="hist-badge">含文档/大纲</span>` : ''}
+          ${hasMaster ? `<span class="hist-badge">含风格母版</span>` : ''}
+        </div>
+        <div class="hist-actions">
+          <button type="button" class="primary" onclick="restoreHistory(${h.savedAt})">恢复到此状态</button>
+          <button type="button" onclick="renameHistory(${h.savedAt})">重命名</button>
+          <button type="button" class="danger" onclick="deleteHistory(${h.savedAt})">删除</button>
+          <button type="button" class="ghost" onclick="downloadHistoryItem(${h.savedAt})">下载单条 JSON</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// 导出/导入
+function exportHistory() {
+  const list = loadHistories();
+  if (!list.length) { toast('没有历史记录可导出', true); return; }
+  const payload = { app: 'ppt-tool', exportedAt: Date.now(), items: list };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const now = new Date(); const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const a = document.createElement('a');
+  a.href = url; a.download = `PPT历史记录_${stamp}.json`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast(`已导出 ${list.length} 条历史记录`);
+}
+
+function downloadHistoryItem(id) {
+  const list = loadHistories();
+  const snap = list.find((h) => h.savedAt === id);
+  if (!snap) { toast('记录不存在', true); return; }
+  const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const safe = (snap.name || `snapshot_${id}`).replace(/[\\/:*?"<>|]/g, '_');
+  const a = document.createElement('a');
+  a.href = url; a.download = `${safe}.json`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function importHistory(ev) {
+  const f = ev.target && ev.target.files && ev.target.files[0];
+  // 先清空，防止同一个文件再次选中不触发 change
+  const input = $('histImportFile');
+  if (input) input.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = String(e.target.result || '');
+      let data = JSON.parse(text);
+      let items = [];
+      if (Array.isArray(data)) items = data;
+      else if (Array.isArray(data.items)) items = data.items;
+      else if (data && data.schemaVersion) items = [data];  // 单条快照
+      if (!items.length) { toast('文件中没有可导入的历史记录', true); return; }
+      // 合并到现有列表，并自动去重（savedAt 相同则覆盖）
+      const current = loadHistories();
+      const map = new Map(current.map((h) => [String(h.savedAt), h]));
+      let add = 0, dup = 0;
+      items.forEach((h) => {
+        if (!h || !h.workState) { return; }
+        if (!h.savedAt) h.savedAt = Date.now() + add;
+        const key = String(h.savedAt);
+        if (map.has(key)) dup++; else add++;
+        map.set(key, h);
+      });
+      const merged = Array.from(map.values());
+      saveHistories(merged);
+      renderHistory();
+      toast(`导入完成：新增 ${add} 条${dup ? `，覆盖/跳过 ${dup} 条同名时间戳` : ''}`);
+    } catch (err) {
+      toast('导入失败：' + (err.message || 'JSON 解析错误'), true);
+    }
+  };
+  reader.readAsText(f);
+}
+
 // ---------------- 启动 ----------------
 loadSettings();
 renderStylePresets();
 renderPages();
+renderHistory();
 </script>
 </body>
 </html>

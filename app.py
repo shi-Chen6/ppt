@@ -19,6 +19,7 @@ import os
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
@@ -30,7 +31,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 IMAGES_DIR = os.path.join(OUTPUT_DIR, "images")
+MASTERS_DIR = os.path.join(OUTPUT_DIR, "masters")  # 母版参考图单独存放
 os.makedirs(IMAGES_DIR, exist_ok=True)
+os.makedirs(MASTERS_DIR, exist_ok=True)
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 
@@ -140,10 +143,11 @@ def _proxy_cfg(skip_proxy):
     return None
 
 
-def _save_image(img_bytes, index, prefix="page"):
+def _save_image(img_bytes, index, prefix="page", target_dir=None):
     """按真实图片格式确定扩展名并落盘，兼容 png/jpeg/webp 等。
 
     prefix 用于区分页面图（page_）与风格母版候选图（master_）。
+    target_dir 指定落盘目录，默认 IMAGES_DIR；母版图传 MASTERS_DIR。
     """
     ext = "png"
     try:
@@ -153,7 +157,8 @@ def _save_image(img_bytes, index, prefix="page"):
     except Exception:
         ext = "png"
     fname = f"{prefix}_{int(index):02d}_{int(time.time() * 1000)}.{ext}"
-    with open(os.path.join(IMAGES_DIR, fname), "wb") as f:
+    save_dir = target_dir or IMAGES_DIR
+    with open(os.path.join(save_dir, fname), "wb") as f:
         f.write(img_bytes)
     return fname
 
@@ -297,8 +302,11 @@ def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip
                 if not img_bytes:
                     last_err = "接口返回里既没有 b64_json 也没有 url，可能是非标准中转站格式"
                     continue
-                fname = _save_image(img_bytes, index, prefix)
-                return {"ok": True, "filename": fname, "url": f"/output/images/{fname}"}
+                is_master = prefix == "master"
+                target_dir = MASTERS_DIR if is_master else IMAGES_DIR
+                fname = _save_image(img_bytes, index, prefix, target_dir=target_dir)
+                url_prefix = "/output/masters/" if is_master else "/output/images/"
+                return {"ok": True, "filename": fname, "url": f"{url_prefix}{fname}"}
             except requests.exceptions.ProxyError as e:
                 proxy_err = True
                 last_err = ("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
@@ -507,9 +515,9 @@ def upload_ref():
     if e == "jpeg":
         e = "jpg"
     fname = f"ref_{int(time.time() * 1000)}.{e}"
-    with open(os.path.join(IMAGES_DIR, fname), "wb") as out:
+    with open(os.path.join(MASTERS_DIR, fname), "wb") as out:
         out.write(data)
-    return _ok({"filename": fname, "url": f"/output/images/{fname}"})
+    return _ok({"filename": fname, "url": f"/output/masters/{fname}"})
 
 
 # ---------------------------------------------------------------------------
@@ -717,7 +725,10 @@ def generate():
 
     if ref_image:
         safe = _validate_filename(ref_image)
-        ref_path = os.path.join(IMAGES_DIR, safe)
+        # 母版参考图优先到 masters 文件夹查找；兼容旧数据（页面图设为母版）回退 images
+        ref_path = os.path.join(MASTERS_DIR, safe)
+        if not os.path.isfile(ref_path):
+            ref_path = os.path.join(IMAGES_DIR, safe)
         if not os.path.isfile(ref_path):
             return _err("风格母版不存在，请重新上传")
         return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope)
@@ -733,6 +744,7 @@ def build_ppt():
     data = request.get_json(force=True, silent=True) or {}
     images = data.get("images") or []
     title = (data.get("title") or "演示文稿").strip() or "演示文稿"
+    output_dir = (data.get("output_dir") or "").strip()
 
     if not images:
         return _err("还没有生成任何图片，请先生成")
@@ -751,9 +763,18 @@ def build_ppt():
         slide.shapes.add_picture(fpath, 0, 0, width=prs.slide_width, height=prs.slide_height)
 
     deck_name = f"{title}_{int(time.time() * 1000)}.pptx"
-    deck_path = os.path.join(OUTPUT_DIR, deck_name)
+    save_dir = output_dir if output_dir else OUTPUT_DIR
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        return _err(f"输出目录创建失败：{e}")
+    deck_path = os.path.join(save_dir, deck_name)
     prs.save(deck_path)
-    return _ok({"filename": deck_name, "url": f"/output/{deck_name}"})
+    if os.path.abspath(save_dir) == os.path.abspath(OUTPUT_DIR):
+        url = f"/output/{deck_name}"
+    else:
+        url = f"/api/download?path={quote(deck_path)}"
+    return _ok({"filename": deck_name, "url": url, "abs_path": os.path.abspath(deck_path)})
 
 
 # ---------------------------------------------------------------------------
@@ -763,18 +784,44 @@ def build_ppt():
 def zip_images():
     data = request.get_json(force=True, silent=True) or {}
     images = data.get("images") or []
+    output_dir = (data.get("output_dir") or "").strip()
     if not images:
         return _err("还没有生成任何图片")
 
     zname = f"images_{int(time.time() * 1000)}.zip"
-    zpath = os.path.join(OUTPUT_DIR, zname)
+    save_dir = output_dir if output_dir else OUTPUT_DIR
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        return _err(f"输出目录创建失败：{e}")
+    zpath = os.path.join(save_dir, zname)
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
         for fn in images:
             safe = _validate_filename(fn)
             fpath = os.path.join(IMAGES_DIR, safe)
             if os.path.isfile(fpath):
                 zf.write(fpath, arcname=safe)
-    return _ok({"filename": zname, "url": f"/output/{zname}"})
+    if os.path.abspath(save_dir) == os.path.abspath(OUTPUT_DIR):
+        url = f"/output/{zname}"
+    else:
+        url = f"/api/download?path={quote(zpath)}"
+    return _ok({"filename": zname, "url": url, "abs_path": os.path.abspath(zpath)})
+
+
+# ---------------------------------------------------------------------------
+# 通用文件下载（用于自定义输出目录的文件）
+# ---------------------------------------------------------------------------
+@app.route("/api/download")
+def download_file():
+    path = request.args.get("path", "")
+    if not path:
+        return _err("缺少文件路径")
+    abs_path = os.path.abspath(path)
+    if not os.path.isfile(abs_path):
+        return _err("文件不存在")
+    dirname = os.path.dirname(abs_path)
+    basename = os.path.basename(abs_path)
+    return send_from_directory(dirname, basename, as_attachment=True)
 
 
 if __name__ == "__main__":
