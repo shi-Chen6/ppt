@@ -262,9 +262,14 @@
         <input type="text" id="global_style" placeholder="例如：清新卡通插画风，明快配色，适合中小学生">
       </div>
       <div style="grid-column: 1 / -1;">
-        <label>输出文件保存路径（留空则保存到默认 output 目录）</label>
+        <label>输出文件保存路径（PPTX / ZIP，留空则保存到默认 output 目录）</label>
         <input type="text" id="output_dir" placeholder="例如：D:\我的PPT  或  留空使用默认路径">
         <div class="hint">生成的 PPTX 与 图片 ZIP 将保存到此目录；目录不存在会自动创建。</div>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <label>图片保存目录（生图 / 图表 / 母版 / 参考图，留空则保存到默认 output/images）</label>
+        <input type="text" id="images_dir" placeholder="例如：D:\PPT素材\图片  或  留空使用默认路径">
+        <div class="hint">生成的页面图、图表、风格母版与参考图将保存到此目录，母版/参考图存放在该目录的 <b>masters</b> 子文件夹；目录不存在会自动创建。与上方 PPTX/ZIP 输出路径互不影响。</div>
       </div>
       <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; margin-top:2px;">
         <input type="checkbox" id="skip_proxy" style="width:auto;">
@@ -377,6 +382,7 @@
       <button type="button" class="primary" onclick="addPage()">＋ 手动添加页面</button>
       <button type="button" onclick="optimizeAll()">一键优化全部提示词</button>
       <button type="button" onclick="generateAll()">一键生成全部图片</button>
+      <button type="button" onclick="retryFailed()">重新生成失败图片</button>
       <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
         <input type="checkbox" id="auto_master" style="width:auto;"> 首图自动当母版
       </label>
@@ -499,6 +505,7 @@ function getSettings() {
     skip_proxy: $('skip_proxy').checked,
     style_count: $('style_count') ? $('style_count').value : '2',
     output_dir: $('output_dir').value.trim(),
+    images_dir: $('images_dir').value.trim(),
     gen_concurrency: parseInt($('gen_concurrency').value, 10) || 1,
   };
 }
@@ -514,7 +521,14 @@ function dsBody(s) {
 
 function saveSettings() {
   localStorage.setItem('ppt_tool_settings', JSON.stringify(getSettings()));
+  syncImagesDirToServer();
   toast('已保存到本机');
+}
+
+// 把当前「图片保存目录」登记到后端（用于跨目录定位 /api/image 图片）；仅在本机服务内生效
+function syncImagesDirToServer() {
+  const d = $('images_dir').value.trim();
+  postJson('/api/set_images_dir', { images_dir: d }).catch(() => {});
 }
 function loadSettings() {
   let s = null;
@@ -533,6 +547,7 @@ function loadSettings() {
   $('skip_proxy').checked = !!(s && s.skip_proxy);
   if ($('style_count')) $('style_count').value = (s && s.style_count) || '2';
   $('output_dir').value = (s && s.output_dir) || '';
+  $('images_dir').value = (s && s.images_dir) || '';
   const cc = parseInt((s && s.gen_concurrency), 10);
   $('gen_concurrency').value = (cc >= 1 && cc <= 20) ? String(cc) : '1';
 }
@@ -552,6 +567,7 @@ function clearSettings() {
   $('skip_proxy').checked = false;
   if ($('style_count')) $('style_count').value = '2';
   $('output_dir').value = '';
+  $('images_dir').value = '';
   $('gen_concurrency').value = '1';
   toast('已清空本地所有设置，请重新填写 API 地址与 Key');
 }
@@ -753,6 +769,7 @@ async function uploadRef() {
   try {
     const fd = new FormData();
     fd.append('file', f);
+    fd.append('images_dir', getSettings().images_dir);
     const data = await postForm('/api/upload_ref', fd);
     state.refImage = data.filename;
     state.refUrl = data.url;
@@ -844,6 +861,7 @@ async function genStyleMaster() {
       count, style_desc: styleDesc,
       deepseek_key: s.deepseek_key, deepseek_base_url: s.deepseek_base_url, deepseek_model: s.deepseek_model,
       prompt: stylePrompt,
+      images_dir: s.images_dir,
       pages,
     };
     const data = await postJson('/api/gen_style_master', body);
@@ -1026,7 +1044,7 @@ async function generatePage(id) {
   try {
     const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
     if (isPrecise) {
-      const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx });
+      const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx, images_dir: s.images_dir });
       p.imageUrl = data.url;
       p.imageFile = data.filename;
       p.status = 'ok';
@@ -1045,6 +1063,7 @@ async function generatePage(id) {
         index: idx,
         lock_scope: s.lock_scope,
         skip_proxy: s.skip_proxy,
+        images_dir: s.images_dir,
       };
       if (state.refImage) body.ref_image = state.refImage;
       const data = await postJson('/api/generate', body);
@@ -1173,13 +1192,40 @@ async function generateAll() {
   else toast(finalMsg);
 }
 
+// 一键重新生成所有「失败」的页面（仅重试状态为 err 且可渲染的页面）
+async function retryFailed() {
+  syncInputs();
+  const s = getSettings();
+  const failed = state.pages.filter((p) => p.status === 'err' && isRenderable(p));
+  if (!failed.length) { toast('没有失败的页面'); return; }
+  const needKey = failed.some((p) => !(PRECISE_CHARTS.includes(p.chart) && p.chart_data));
+  if (needKey && !s.openai_key) { toast('请先填写 OpenAI Key', true); return; }
+  const concurrency = Math.max(1, Math.min(20, parseInt(s.gen_concurrency, 10) || 1));
+  const total = failed.length;
+
+  progress(0, total, `重新生成失败图片 0/${total}`);
+  const tasks = failed.map((p) => async () => {
+    try { await generatePage(p.id); } catch (_) { /* generatePage 内部已 toast */ }
+  });
+  await runPool(tasks, concurrency, (fin, _, errs) => {
+    progress(fin, total, `重新生成失败图片 ${fin}/${total}` + (errs ? `（失败 ${errs}）` : ''));
+  });
+
+  const okCount = failed.filter((p) => p.status === 'ok').length;
+  const badCount = total - okCount;
+  const finalMsg = `失败重试完成：成功 ${okCount} 张` + (badCount ? `，仍失败 ${badCount} 张` : '');
+  progress(total, total, finalMsg);
+  setTimeout(hideProgress, 2000);
+  toast(finalMsg + (badCount ? '，可再次点击重试' : ''));
+}
+
 async function buildPpt() {
   syncInputs();
   const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir });
+    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir, images_dir: $('images_dir').value.trim() });
     showResult([{ label: '下载 PPTX', url: data.url, cls: '' }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? 'PPT 已生成：' + data.abs_path : 'PPT 已生成');
@@ -1194,7 +1240,7 @@ async function zipImages() {
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/zip_images', { images, output_dir: outputDir });
+    const data = await postJson('/api/zip_images', { images, output_dir: outputDir, images_dir: $('images_dir').value.trim() });
     showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip' }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? '图片已打包：' + data.abs_path : '图片已打包');
@@ -1430,6 +1476,7 @@ function doRestoreHistory(id) {
   $('skip_proxy').checked = !!s.skip_proxy;
   if ($('style_count')) $('style_count').value = s.style_count || '2';
   $('output_dir').value = s.output_dir || '';
+  $('images_dir').value = s.images_dir || '';
 
   const ws = (snap.workState && typeof snap.workState === 'object') ? snap.workState : {};
   state.nextId = ws.nextId || 1;
@@ -1563,6 +1610,7 @@ function importHistory(ev) {
 
 // ---------------- 启动 ----------------
 loadSettings();
+syncImagesDirToServer();
 renderStylePresets();
 renderPages();
 renderHistory();

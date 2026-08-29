@@ -35,6 +35,11 @@ MASTERS_DIR = os.path.join(OUTPUT_DIR, "masters")  # 母版参考图单独存放
 os.makedirs(IMAGES_DIR, exist_ok=True)
 os.makedirs(MASTERS_DIR, exist_ok=True)
 
+# 自定义图片目录：由前端「① API 设置 → 图片保存目录」随请求传入；
+# None 表示使用默认目录（output/images + output/masters）。
+CUSTOM_IMAGES_DIR = None
+_KNOWN_CUSTOM_DIRS = []   # 本会话出现过的自定义目录（新→旧），用于跨目录查找历史图片
+
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 # ---------------------------------------------------------------------------
@@ -126,6 +131,68 @@ def _err(msg, status=400):
 def _validate_filename(name):
     """只允许纯文件名，防止路径穿越。"""
     return os.path.basename(name)
+
+
+def _remember_images_dir(images_dir):
+    """记录当前生效的自定义图片目录；空值回到默认目录。"""
+    global CUSTOM_IMAGES_DIR
+    d = (images_dir or "").strip()
+    if d:
+        d = os.path.abspath(d)
+        if d not in _KNOWN_CUSTOM_DIRS:
+            _KNOWN_CUSTOM_DIRS.insert(0, d)
+        CUSTOM_IMAGES_DIR = d
+    else:
+        CUSTOM_IMAGES_DIR = None
+
+
+def _save_dirs(images_dir=None):
+    """返回 (图片保存目录, 母版保存目录)，目录不存在则自动创建。"""
+    d = (images_dir or "").strip()
+    if d:
+        img = os.path.abspath(d)
+        mas = os.path.join(img, "masters")
+        os.makedirs(img, exist_ok=True)
+        os.makedirs(mas, exist_ok=True)
+        return img, mas
+    return IMAGES_DIR, MASTERS_DIR
+
+
+def _image_roots():
+    """按优先级列出所有可能存放图片的目录：当前自定义目录 → 历史自定义目录 → 默认目录。"""
+    roots, seen = [], set()
+
+    def add(p):
+        p = os.path.abspath(p)
+        if p not in seen:
+            seen.add(p)
+            roots.append(p)
+
+    if CUSTOM_IMAGES_DIR:
+        add(CUSTOM_IMAGES_DIR)
+        add(os.path.join(CUSTOM_IMAGES_DIR, "masters"))
+    for d in _KNOWN_CUSTOM_DIRS:
+        if d != CUSTOM_IMAGES_DIR:
+            add(d)
+            add(os.path.join(d, "masters"))
+    add(IMAGES_DIR)
+    add(MASTERS_DIR)
+    return roots
+
+
+def _find_image(fname):
+    """跨目录按文件名定位图片，返回绝对路径；找不到返回 None。"""
+    safe = _validate_filename(fname)
+    for d in _image_roots():
+        p = os.path.join(d, safe)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _image_url(fname):
+    """统一的图片访问地址：按文件名跨目录定位，与图片实际存放目录无关。"""
+    return f"/api/image/{fname}"
 
 
 def _download_image(url, headers=None, skip_proxy=False):
@@ -261,15 +328,17 @@ def _extract_text(content, ext):
     return raw
 
 
-def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page"):
+def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None):
     """generations 端点：纯文本生图（纯逻辑，返回 dict，不依赖 Flask 上下文）。
 
     返回 {"ok": True, "filename":..., "url":...} 或 {"ok": False, "error":...}。
     prefix 决定落盘文件名前缀：页面图用 page_，风格母版候选图用 master_。
+    images_dir 指定自定义图片保存目录（母版图存其 masters 子文件夹）。
     可在工作线程中安全调用（不触碰 jsonify / current_app）。
     """
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     proxies = _proxy_cfg(skip_proxy)
+    img_dir, mas_dir = _save_dirs(images_dir)
 
     def make_body(with_extra):
         body = {"model": model, "prompt": prompt, "n": 1, "size": size}
@@ -303,10 +372,9 @@ def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip
                     last_err = "接口返回里既没有 b64_json 也没有 url，可能是非标准中转站格式"
                     continue
                 is_master = prefix == "master"
-                target_dir = MASTERS_DIR if is_master else IMAGES_DIR
+                target_dir = mas_dir if is_master else img_dir
                 fname = _save_image(img_bytes, index, prefix, target_dir=target_dir)
-                url_prefix = "/output/masters/" if is_master else "/output/images/"
-                return {"ok": True, "filename": fname, "url": f"{url_prefix}{fname}"}
+                return {"ok": True, "filename": fname, "url": _image_url(fname)}
             except requests.exceptions.ProxyError as e:
                 proxy_err = True
                 last_err = ("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
@@ -323,9 +391,9 @@ def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip
     return {"ok": False, "error": f"图片生成失败：{last_err}"}
 
 
-def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page"):
+def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None):
     """generations 端点视图包装：调纯逻辑函数并构造 Flask 响应（仅在请求线程调用）。"""
-    r = _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, prefix)
+    r = _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, prefix, images_dir)
     if r.get("ok"):
         return _ok({"filename": r["filename"], "url": r["url"]})
     return _err(r.get("error") or "图片生成失败")
@@ -342,7 +410,7 @@ _LOCK_STYLE = (
 )
 
 
-def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=False, lock_scope="style"):
+def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=False, lock_scope="style", images_dir=None):
     """edits 端点：传参考图锁长相 / 锁整体风格。
 
     lock_scope:
@@ -381,8 +449,9 @@ def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=Fa
             if not img_bytes:
                 last_err = "接口返回里既没有 b64_json 也没有 url"
                 continue
-            fname = _save_image(img_bytes, index)
-            return _ok({"filename": fname, "url": f"/output/images/{fname}"})
+            img_dir, _ = _save_dirs(images_dir)
+            fname = _save_image(img_bytes, index, target_dir=img_dir)
+            return _ok({"filename": fname, "url": _image_url(fname)})
         except requests.exceptions.ProxyError as e:
             return _err("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
                         "请在「① API 设置」勾选「跳过系统代理（直连）」后重试。详情：" + str(e))
@@ -406,6 +475,23 @@ def index():
 @app.route("/output/<path:filename>")
 def serve_output(filename):
     return send_from_directory(OUTPUT_DIR, filename)
+
+
+@app.route("/api/image/<path:filename>")
+def serve_image(filename):
+    """按文件名跨目录返回图片（页面图/图表/母版/参考图，兼容自定义目录与默认目录）。"""
+    path = _find_image(filename)
+    if not path:
+        return _err("图片不存在", 404)
+    return send_from_directory(os.path.dirname(path), os.path.basename(path))
+
+
+@app.route("/api/set_images_dir", methods=["POST"])
+def set_images_dir():
+    """轻量接口：仅登记自定义图片目录，供前端刷新页面后恢复预览定位。"""
+    data = request.get_json(force=True, silent=True) or {}
+    _remember_images_dir(data.get("images_dir"))
+    return _ok({})
 
 
 # ---------------------------------------------------------------------------
@@ -511,13 +597,16 @@ def upload_ref():
     data = f.read()
     if not data:
         return _err("文件为空")
+    images_dir = (request.form.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
     e = ext.lstrip(".")
     if e == "jpeg":
         e = "jpg"
     fname = f"ref_{int(time.time() * 1000)}.{e}"
-    with open(os.path.join(MASTERS_DIR, fname), "wb") as out:
+    _, mas_dir = _save_dirs(images_dir)
+    with open(os.path.join(mas_dir, fname), "wb") as out:
         out.write(data)
-    return _ok({"filename": fname, "url": f"/output/masters/{fname}"})
+    return _ok({"filename": fname, "url": _image_url(fname)})
 
 
 # ---------------------------------------------------------------------------
@@ -570,6 +659,8 @@ def gen_style_master():
     quality = data.get("quality") or "high"
     fmt = data.get("format") or "png"
     skip_proxy = data.get("skip_proxy") or False
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
 
     style_desc = (data.get("style_desc") or "").strip()
     pages = data.get("pages") or []
@@ -622,7 +713,7 @@ def gen_style_master():
 
     def _one(i):
         return i, _text2img_once(key, base_url, model, prompt, size, quality, fmt, i,
-                                 skip_proxy=skip_proxy, prefix="master")
+                                 skip_proxy=skip_proxy, prefix="master", images_dir=images_dir)
 
     with ThreadPoolExecutor(max_workers=count) as ex:
         futs = [ex.submit(_one, i) for i in range(count)]
@@ -653,6 +744,8 @@ def render_chart():
     chart_type = (data.get("chart") or "").strip()
     chart_data = data.get("chart_data") or {}
     index = data.get("index") or 0
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
 
     if not chart_type:
         return _err("缺少图表类型")
@@ -663,10 +756,11 @@ def render_chart():
     except Exception as e:  # noqa: BLE001
         return _err(f"图表绘制失败：{e}", 500)
 
+    img_dir, _ = _save_dirs(images_dir)
     fname = f"chart_{int(index):02d}_{int(time.time() * 1000)}.png"
-    with open(os.path.join(IMAGES_DIR, fname), "wb") as f:
+    with open(os.path.join(img_dir, fname), "wb") as f:
         f.write(png_bytes)
-    return _ok({"filename": fname, "url": f"/output/images/{fname}"})
+    return _ok({"filename": fname, "url": _image_url(fname)})
 
 
 # ---------------------------------------------------------------------------
@@ -715,6 +809,8 @@ def generate():
     ref_image = (data.get("ref_image") or "").strip()
     lock_scope = (data.get("lock_scope") or "style").strip()
     skip_proxy = data.get("skip_proxy") or False
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
 
     if not key:
         return _err("请先填写 OpenAI API Key")
@@ -724,16 +820,12 @@ def generate():
         return _err("提示词不能为空")
 
     if ref_image:
-        safe = _validate_filename(ref_image)
-        # 母版参考图优先到 masters 文件夹查找；兼容旧数据（页面图设为母版）回退 images
-        ref_path = os.path.join(MASTERS_DIR, safe)
-        if not os.path.isfile(ref_path):
-            ref_path = os.path.join(IMAGES_DIR, safe)
-        if not os.path.isfile(ref_path):
+        ref_path = _find_image(ref_image)  # 跨目录定位：自定义目录 > 默认目录
+        if not ref_path:
             return _err("风格母版不存在，请重新上传")
-        return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope)
+        return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope, images_dir)
 
-    return _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy)
+    return _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, images_dir=images_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -745,6 +837,8 @@ def build_ppt():
     images = data.get("images") or []
     title = (data.get("title") or "演示文稿").strip() or "演示文稿"
     output_dir = (data.get("output_dir") or "").strip()
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
 
     if not images:
         return _err("还没有生成任何图片，请先生成")
@@ -755,10 +849,9 @@ def build_ppt():
     blank = prs.slide_layouts[6]
 
     for fn in images:
-        safe = _validate_filename(fn)
-        fpath = os.path.join(IMAGES_DIR, safe)
-        if not os.path.isfile(fpath):
-            return _err(f"找不到图片：{safe}")
+        fpath = _find_image(fn)  # 跨目录定位图片（自定义目录 > 默认目录）
+        if not fpath:
+            return _err(f"找不到图片：{_validate_filename(fn)}")
         slide = prs.slides.add_slide(blank)
         slide.shapes.add_picture(fpath, 0, 0, width=prs.slide_width, height=prs.slide_height)
 
@@ -785,6 +878,8 @@ def zip_images():
     data = request.get_json(force=True, silent=True) or {}
     images = data.get("images") or []
     output_dir = (data.get("output_dir") or "").strip()
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
     if not images:
         return _err("还没有生成任何图片")
 
@@ -798,8 +893,8 @@ def zip_images():
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
         for fn in images:
             safe = _validate_filename(fn)
-            fpath = os.path.join(IMAGES_DIR, safe)
-            if os.path.isfile(fpath):
+            fpath = _find_image(safe)  # 跨目录定位图片
+            if fpath:
                 zf.write(fpath, arcname=safe)
     if os.path.abspath(save_dir) == os.path.abspath(OUTPUT_DIR):
         url = f"/output/{zname}"
