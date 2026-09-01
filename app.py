@@ -40,6 +40,11 @@ os.makedirs(MASTERS_DIR, exist_ok=True)
 CUSTOM_IMAGES_DIR = None
 _KNOWN_CUSTOM_DIRS = []   # 本会话出现过的自定义目录（新→旧），用于跨目录查找历史图片
 
+# 当前项目子文件夹名（如 "20260831_计算机网络基础"）：
+# 页面图 / 图表落到 <images_dir>/<project_name>/，母版 / 参考图仍统一存 <images_dir>/masters/。
+CURRENT_PROJECT_NAME = None
+_KNOWN_PROJECT_DIRS = []  # 历史项目子文件夹名（新→旧），用于跨项目查找历史图片
+
 app = Flask(__name__, static_folder="static", static_url_path="")
 
 # ---------------------------------------------------------------------------
@@ -146,20 +151,85 @@ def _remember_images_dir(images_dir):
         CUSTOM_IMAGES_DIR = None
 
 
-def _save_dirs(images_dir=None):
-    """返回 (图片保存目录, 母版保存目录)，目录不存在则自动创建。"""
+def _sanitize_project_name(name):
+    """清洗项目名：去掉 Windows 文件名非法字符，空格→下划线，折叠连续下划线。"""
+    if not name:
+        return ""
+    safe = name.strip()
+    for ch in '\\/:*?"<>|':
+        safe = safe.replace(ch, "")
+    safe = safe.replace(" ", "_")
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return safe.strip("_")
+
+
+def _build_project_name(raw_name):
+    """组合成 YYYYMMDD_<项目名>；raw_name 为空时仅用 YYYYMMDD。"""
+    date_part = time.strftime("%Y%m%d")
+    safe = _sanitize_project_name(raw_name)
+    return f"{date_part}_{safe}" if safe else date_part
+
+
+def _make_project_name_unique(parent_dir, base_name):
+    """若 parent_dir 下已存在同名子文件夹，追加 _2 / _3 ... 直到不重名。"""
+    if not base_name:
+        base_name = time.strftime("%Y%m%d")
+    candidate = base_name
+    n = 2
+    while os.path.isdir(os.path.join(parent_dir, candidate)):
+        candidate = f"{base_name}_{n}"
+        n += 1
+    return candidate
+
+
+def _remember_project(project_name):
+    """记录当前活跃项目子文件夹；空值清除。同时加入历史列表用于跨项目查找。"""
+    global CURRENT_PROJECT_NAME
+    pn = (project_name or "").strip()
+    if pn:
+        if pn not in _KNOWN_PROJECT_DIRS:
+            _KNOWN_PROJECT_DIRS.insert(0, pn)
+        CURRENT_PROJECT_NAME = pn
+    else:
+        CURRENT_PROJECT_NAME = None
+
+
+def _save_dirs(images_dir=None, project_name=None):
+    """返回 (页面图保存目录, 母版保存目录)，目录不存在则自动创建。
+
+    页面图 / 图表存 <images_dir>/<project_name>/，母版 / 参考图存 <images_dir>/masters/。
+    project_name 为空时退回到 <images_dir> 根目录（兼容旧逻辑）。
+    images_dir 为空时用默认 IMAGES_DIR / MASTERS_DIR。
+    """
     d = (images_dir or "").strip()
+    pn = (project_name or "").strip()
     if d:
-        img = os.path.abspath(d)
-        mas = os.path.join(img, "masters")
-        os.makedirs(img, exist_ok=True)
+        root = os.path.abspath(d)
+        mas = os.path.join(root, "masters")
         os.makedirs(mas, exist_ok=True)
+        if pn:
+            img = os.path.join(root, pn)
+            os.makedirs(img, exist_ok=True)
+        else:
+            img = root
+            os.makedirs(img, exist_ok=True)
         return img, mas
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    os.makedirs(MASTERS_DIR, exist_ok=True)
+    if pn:
+        img = os.path.join(IMAGES_DIR, pn)
+        os.makedirs(img, exist_ok=True)
+        return img, MASTERS_DIR
     return IMAGES_DIR, MASTERS_DIR
 
 
 def _image_roots():
-    """按优先级列出所有可能存放图片的目录：当前自定义目录 → 历史自定义目录 → 默认目录。"""
+    """按优先级列出所有可能存放图片的目录。
+
+    优先级：当前自定义目录的当前项目子文件夹 → 当前自定义目录 → 当前目录的 masters →
+    当前自定义目录下的历史项目子文件夹 → 历史自定义目录及其项目子文件夹/masters → 默认目录。
+    """
     roots, seen = [], set()
 
     def add(p):
@@ -169,11 +239,19 @@ def _image_roots():
             roots.append(p)
 
     if CUSTOM_IMAGES_DIR:
+        # 当前活跃项目子文件夹优先级最高，便于重新生成时跨目录定位最新图
+        if CURRENT_PROJECT_NAME:
+            add(os.path.join(CUSTOM_IMAGES_DIR, CURRENT_PROJECT_NAME))
         add(CUSTOM_IMAGES_DIR)
         add(os.path.join(CUSTOM_IMAGES_DIR, "masters"))
+        # 当前自定义目录下所有历史项目子文件夹
+        for pn in _KNOWN_PROJECT_DIRS:
+            add(os.path.join(CUSTOM_IMAGES_DIR, pn))
     for d in _KNOWN_CUSTOM_DIRS:
         if d != CUSTOM_IMAGES_DIR:
             add(d)
+            for pn in _KNOWN_PROJECT_DIRS:
+                add(os.path.join(d, pn))
             add(os.path.join(d, "masters"))
     add(IMAGES_DIR)
     add(MASTERS_DIR)
@@ -328,17 +406,17 @@ def _extract_text(content, ext):
     return raw
 
 
-def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None):
+def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None, project_name=None):
     """generations 端点：纯文本生图（纯逻辑，返回 dict，不依赖 Flask 上下文）。
 
     返回 {"ok": True, "filename":..., "url":...} 或 {"ok": False, "error":...}。
     prefix 决定落盘文件名前缀：页面图用 page_，风格母版候选图用 master_。
-    images_dir 指定自定义图片保存目录（母版图存其 masters 子文件夹）。
-    可在工作线程中安全调用（不触碰 jsonify / current_app）。
+    images_dir 指定自定义图片保存根目录；project_name 指定项目子文件夹名（页面图落到其下，
+    母版图存 masters 子文件夹）。可在工作线程中安全调用（不触碰 jsonify / current_app）。
     """
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     proxies = _proxy_cfg(skip_proxy)
-    img_dir, mas_dir = _save_dirs(images_dir)
+    img_dir, mas_dir = _save_dirs(images_dir, project_name)
 
     def make_body(with_extra):
         body = {"model": model, "prompt": prompt, "n": 1, "size": size}
@@ -391,9 +469,9 @@ def _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip
     return {"ok": False, "error": f"图片生成失败：{last_err}"}
 
 
-def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None):
+def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy=False, prefix="page", images_dir=None, project_name=None):
     """generations 端点视图包装：调纯逻辑函数并构造 Flask 响应（仅在请求线程调用）。"""
-    r = _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, prefix, images_dir)
+    r = _text2img_once(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, prefix, images_dir, project_name)
     if r.get("ok"):
         return _ok({"filename": r["filename"], "url": r["url"]})
     return _err(r.get("error") or "图片生成失败")
@@ -410,12 +488,13 @@ _LOCK_STYLE = (
 )
 
 
-def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=False, lock_scope="style", images_dir=None):
+def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=False, lock_scope="style", images_dir=None, project_name=None):
     """edits 端点：传参考图锁长相 / 锁整体风格。
 
     lock_scope:
       "style" —— 锁定整页视觉风格（配色/背景/字体/装饰/版式）+ 人物（默认，用于统一整批课件风格）
       "face"  —— 仅锁定人物长相、发型、服装
+    project_name 指定当前项目子文件夹；edits 生成的页面图落到其下，与母版/参考图无关。
     """
     headers = {"Authorization": f"Bearer {key}"}
     proxies = _proxy_cfg(skip_proxy)
@@ -449,7 +528,7 @@ def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=Fa
             if not img_bytes:
                 last_err = "接口返回里既没有 b64_json 也没有 url"
                 continue
-            img_dir, _ = _save_dirs(images_dir)
+            img_dir, _ = _save_dirs(images_dir, project_name)
             fname = _save_image(img_bytes, index, target_dir=img_dir)
             return _ok({"filename": fname, "url": _image_url(fname)})
         except requests.exceptions.ProxyError as e:
@@ -494,27 +573,78 @@ def set_images_dir():
     return _ok({})
 
 
+@app.route("/api/new_project", methods=["POST"])
+def new_project():
+    """新建一个项目子文件夹：组合 YYYYMMDD_<项目名>，重名追加 _2/_3。
+
+    入参：images_dir（可空，空则用默认 output/images）、project_name（raw，可空）。
+    出参：project_name（最终子文件夹名）、project_dir（绝对路径）。
+    页面图 / 图表将落到该子文件夹；母版 / 参考图仍存 images_dir/masters。
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    images_dir = (data.get("images_dir") or "").strip() or None
+    raw_name = (data.get("project_name") or "").strip()
+    _remember_images_dir(images_dir)
+
+    parent = os.path.abspath(images_dir) if images_dir else IMAGES_DIR
+    os.makedirs(parent, exist_ok=True)
+    # 同时确保 masters 子文件夹存在（母版/参考图统一存放位置，与项目无关）
+    os.makedirs(os.path.join(parent, "masters"), exist_ok=True)
+    base = _build_project_name(raw_name)            # YYYYMMDD_<safe>
+    final = _make_project_name_unique(parent, base)  # 重名追加 _2/_3
+    project_dir = os.path.join(parent, final)
+    os.makedirs(project_dir, exist_ok=True)
+    _remember_project(final)
+    return _ok({"project_name": final, "project_dir": os.path.abspath(project_dir)})
+
+
 # ---------------------------------------------------------------------------
 # B 链：文档解析 / 大纲 / 文案
 # ---------------------------------------------------------------------------
 @app.route("/api/parse_doc", methods=["POST"])
 def parse_doc():
     # 支持文件上传（docx/txt/md）或 JSON 里直接粘贴文本
+    images_dir = None
+    project_name = None
+    file_basename = None
     if request.content_type and "multipart" in request.content_type:
         f = request.files.get("file")
         if not f:
             return _err("未收到文件")
         ext = os.path.splitext(f.filename or "")[1].lower()
-        text = _extract_text(f.read(), ext)
+        content = f.read()
+        file_basename = os.path.splitext(os.path.basename(f.filename or ""))[0]
+        images_dir = (request.form.get("images_dir") or "").strip() or None
+        project_name = (request.form.get("project_name") or "").strip() or None
+        text = _extract_text(content, ext)
     else:
         data = request.get_json(force=True, silent=True) or {}
         text = (data.get("text") or "").strip()
         if not text:
             return _err("请上传文件或直接粘贴文本")
+        images_dir = (data.get("images_dir") or "").strip() or None
+        project_name = (data.get("project_name") or "").strip() or None
     text = (text or "").strip()
     if not text:
         return _err("未能从文档中提取到文字，请检查文件格式")
-    return _ok({"text": text, "length": len(text)})
+
+    _remember_images_dir(images_dir)
+    # 前端已传活跃项目就直接记忆；否则后端按文档名兜底新建一个并回传最终名
+    if project_name:
+        _remember_project(project_name)
+    elif not CURRENT_PROJECT_NAME:
+        raw = file_basename or time.strftime("%Y%m%d")
+        parent = os.path.abspath(images_dir) if images_dir else IMAGES_DIR
+        os.makedirs(parent, exist_ok=True)
+        base = _build_project_name(raw)
+        final = _make_project_name_unique(parent, base)
+        os.makedirs(os.path.join(parent, final), exist_ok=True)
+        _remember_project(final)
+        project_name = final
+    else:
+        project_name = CURRENT_PROJECT_NAME
+
+    return _ok({"text": text, "length": len(text), "project_name": project_name})
 
 
 @app.route("/api/outline", methods=["POST"])
@@ -527,11 +657,29 @@ def outline():
     page_count = data.get("page_count") or 8
     grade = (data.get("grade") or "通用").strip()
     skip_proxy = data.get("skip_proxy") or False
+    images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
 
     if not key:
         return _err("请先填写 DeepSeek API Key")
     if not text:
         return _err("请先上传或粘贴文档内容")
+
+    _remember_images_dir(images_dir)
+    # 跳过 parse_doc 直接走 outline 时兜底建项目（用文本前若干字作候选名）
+    if project_name:
+        _remember_project(project_name)
+    elif not CURRENT_PROJECT_NAME:
+        parent = os.path.abspath(images_dir) if images_dir else IMAGES_DIR
+        os.makedirs(parent, exist_ok=True)
+        raw = (text[:20].replace("\n", " ").replace("\r", " ").strip()) or time.strftime("%Y%m%d")
+        base = _build_project_name(raw)
+        final = _make_project_name_unique(parent, base)
+        os.makedirs(os.path.join(parent, final), exist_ok=True)
+        _remember_project(final)
+        project_name = final
+    else:
+        project_name = CURRENT_PROJECT_NAME
 
     try:
         page_count = max(1, min(int(page_count), 40))
@@ -547,7 +695,7 @@ def outline():
         outline_json = _parse_json(content)
         if not isinstance(outline_json, list):
             return _err("大纲格式异常，请重试")
-        return _ok({"outline": outline_json})
+        return _ok({"outline": outline_json, "project_name": project_name})
     except Exception as e:  # noqa: BLE001
         return _err(f"大纲生成失败：{e}", 500)
 
@@ -745,7 +893,10 @@ def render_chart():
     chart_data = data.get("chart_data") or {}
     index = data.get("index") or 0
     images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
     _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
 
     if not chart_type:
         return _err("缺少图表类型")
@@ -756,7 +907,7 @@ def render_chart():
     except Exception as e:  # noqa: BLE001
         return _err(f"图表绘制失败：{e}", 500)
 
-    img_dir, _ = _save_dirs(images_dir)
+    img_dir, _ = _save_dirs(images_dir, project_name)
     fname = f"chart_{int(index):02d}_{int(time.time() * 1000)}.png"
     with open(os.path.join(img_dir, fname), "wb") as f:
         f.write(png_bytes)
@@ -810,7 +961,10 @@ def generate():
     lock_scope = (data.get("lock_scope") or "style").strip()
     skip_proxy = data.get("skip_proxy") or False
     images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
     _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
 
     if not key:
         return _err("请先填写 OpenAI API Key")
@@ -823,9 +977,9 @@ def generate():
         ref_path = _find_image(ref_image)  # 跨目录定位：自定义目录 > 默认目录
         if not ref_path:
             return _err("风格母版不存在，请重新上传")
-        return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope, images_dir)
+        return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope, images_dir, project_name)
 
-    return _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, images_dir=images_dir)
+    return _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, images_dir=images_dir, project_name=project_name)
 
 
 # ---------------------------------------------------------------------------
@@ -838,7 +992,10 @@ def build_ppt():
     title = (data.get("title") or "演示文稿").strip() or "演示文稿"
     output_dir = (data.get("output_dir") or "").strip()
     images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
     _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
 
     if not images:
         return _err("还没有生成任何图片，请先生成")
@@ -879,7 +1036,10 @@ def zip_images():
     images = data.get("images") or []
     output_dir = (data.get("output_dir") or "").strip()
     images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
     _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
     if not images:
         return _err("还没有生成任何图片")
 

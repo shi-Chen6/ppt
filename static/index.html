@@ -271,6 +271,14 @@
         <input type="text" id="images_dir" placeholder="例如：D:\PPT素材\图片  或  留空使用默认路径">
         <div class="hint">生成的页面图、图表、风格母版与参考图将保存到此目录，母版/参考图存放在该目录的 <b>masters</b> 子文件夹；目录不存在会自动创建。与上方 PPTX/ZIP 输出路径互不影响。</div>
       </div>
+      <div style="grid-column: 1 / -1;">
+        <label>当前项目（每个项目一个子文件夹；页面图 / 图表落到其下，母版仍存上面的 masters）</label>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span id="projectLabel" style="color:var(--muted); font-size:13px; min-width:200px;">未创建项目（生图时会按当天日期兜底）</span>
+          <button type="button" onclick="newProject()">新建项目</button>
+        </div>
+        <div class="hint">项目子文件夹命名：<b>YYYYMMDD_项目名</b>；同日同名追加 _2/_3。A 链（手动逐页）建议先点「新建项目」；B 链上传文档时会自动创建并回填。</div>
+      </div>
       <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; margin-top:2px;">
         <input type="checkbox" id="skip_proxy" style="width:auto;">
         <label style="margin:0;">跳过系统代理（直连）：遇到 ProxyError / 远程连接被关闭时勾选此项</label>
@@ -429,6 +437,7 @@ const state = {
   refImage: '',
   refUrl: '',
   styleCandidates: [],
+  projectName: '',    // 当前活跃项目子文件夹名（YYYYMMDD_项目名）；空表示未创建
 };
 
 // 图表类型：精确类走 matplotlib 绘图，示意类走生图
@@ -506,6 +515,7 @@ function getSettings() {
     style_count: $('style_count') ? $('style_count').value : '2',
     output_dir: $('output_dir').value.trim(),
     images_dir: $('images_dir').value.trim(),
+    project_name: state.projectName || '',
     gen_concurrency: parseInt($('gen_concurrency').value, 10) || 1,
   };
 }
@@ -530,6 +540,40 @@ function syncImagesDirToServer() {
   const d = $('images_dir').value.trim();
   postJson('/api/set_images_dir', { images_dir: d }).catch(() => {});
 }
+
+// 刷新「当前项目」标签显示
+function updateProjectLabel() {
+  const el = $('projectLabel');
+  if (!el) return;
+  el.textContent = state.projectName
+    ? ('当前项目：' + state.projectName)
+    : '未创建项目（生图时会按当天日期兜底）';
+}
+
+// 后端兜底建项目时会回传 project_name，这里统一回填显示 + 持久化
+function applyProjectName(name) {
+  if (!name || name === state.projectName) return;
+  state.projectName = name;
+  updateProjectLabel();
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('ppt_tool_settings') || '{}'); } catch (e) {}
+  saved.project_name = state.projectName;
+  localStorage.setItem('ppt_tool_settings', JSON.stringify(saved));
+}
+
+// 新建项目：弹窗输入项目名 → 后端组合 YYYYMMDD_<项目名> 建子文件夹 → 回填显示并持久化
+async function newProject() {
+  const s = getSettings();
+  const raw = prompt('请输入项目名（将组合为 YYYYMMDD_<项目名>；可留空仅用当天日期）', '');
+  if (raw === null) return;  // 用户取消
+  try {
+    const data = await postJson('/api/new_project', { images_dir: s.images_dir, project_name: raw });
+    applyProjectName(data.project_name || '');
+    toast('已创建项目：' + state.projectName);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
 function loadSettings() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem('ppt_tool_settings') || 'null'); } catch (e) {}
@@ -548,6 +592,8 @@ function loadSettings() {
   if ($('style_count')) $('style_count').value = (s && s.style_count) || '2';
   $('output_dir').value = (s && s.output_dir) || '';
   $('images_dir').value = (s && s.images_dir) || '';
+  state.projectName = (s && s.project_name) || '';
+  updateProjectLabel();
   const cc = parseInt((s && s.gen_concurrency), 10);
   $('gen_concurrency').value = (cc >= 1 && cc <= 20) ? String(cc) : '1';
 }
@@ -568,6 +614,8 @@ function clearSettings() {
   if ($('style_count')) $('style_count').value = '2';
   $('output_dir').value = '';
   $('images_dir').value = '';
+  state.projectName = '';
+  updateProjectLabel();
   $('gen_concurrency').value = '1';
   toast('已清空本地所有设置，请重新填写 API 地址与 Key');
 }
@@ -599,19 +647,24 @@ async function postForm(url, formData) {
 async function parseDoc() {
   const fileInput = $('docFile');
   const paste = $('docPaste').value.trim();
+  const s = getSettings();
   try {
+    let data;
     if (fileInput.files && fileInput.files.length) {
       const fd = new FormData();
       fd.append('file', fileInput.files[0]);
-      const data = await postForm('/api/parse_doc', fd);
-      state.docText = data.text;
+      fd.append('images_dir', s.images_dir);
+      fd.append('project_name', state.projectName);
+      data = await postForm('/api/parse_doc', fd);
     } else if (paste) {
-      const data = await postJson('/api/parse_doc', { text: paste });
-      state.docText = data.text;
+      data = await postJson('/api/parse_doc', { text: paste, images_dir: s.images_dir, project_name: state.projectName });
     } else {
       toast('请先选择文件或粘贴文本', true);
       return;
     }
+    state.docText = data.text;
+    // 后端在无活跃项目时会兜底建一个并回传最终名，这里统一回填
+    applyProjectName(data.project_name || '');
     renderDoc();
     toast('解析完成，共 ' + state.docText.length + ' 字');
   } catch (e) {
@@ -635,8 +688,11 @@ async function genOutline() {
       text: state.docText,
       page_count: parseInt($('pageCount').value) || 8,
       grade: $('grade').value,
+      images_dir: s.images_dir,
+      project_name: state.projectName,
     });
     const data = await postJson('/api/outline', body);
+    applyProjectName(data.project_name || '');
     state.outline = (data.outline || []).map((o) => ({
       title: o.title || '',
       points: (o.points || []).join('\n'),
@@ -1044,7 +1100,7 @@ async function generatePage(id) {
   try {
     const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
     if (isPrecise) {
-      const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx, images_dir: s.images_dir });
+      const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx, images_dir: s.images_dir, project_name: state.projectName });
       p.imageUrl = data.url;
       p.imageFile = data.filename;
       p.status = 'ok';
@@ -1064,6 +1120,7 @@ async function generatePage(id) {
         lock_scope: s.lock_scope,
         skip_proxy: s.skip_proxy,
         images_dir: s.images_dir,
+        project_name: state.projectName,
       };
       if (state.refImage) body.ref_image = state.refImage;
       const data = await postJson('/api/generate', body);
@@ -1225,7 +1282,7 @@ async function buildPpt() {
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir, images_dir: $('images_dir').value.trim() });
+    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
     showResult([{ label: '下载 PPTX', url: data.url, cls: '' }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? 'PPT 已生成：' + data.abs_path : 'PPT 已生成');
@@ -1240,7 +1297,7 @@ async function zipImages() {
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/zip_images', { images, output_dir: outputDir, images_dir: $('images_dir').value.trim() });
+    const data = await postJson('/api/zip_images', { images, output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
     showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip' }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? '图片已打包：' + data.abs_path : '图片已打包');
