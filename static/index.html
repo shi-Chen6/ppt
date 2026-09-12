@@ -160,6 +160,31 @@
   .ref-card .ref-btns button { font-size: 12px; padding: 3px 7px; }
   .sm-chips .chip.active { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
 
+  /* ① 输出与项目设置（折叠条） */
+  .adv-set {
+    border: 1px solid var(--border); border-radius: 10px; background: #fafbfd;
+    margin-top: 14px;
+  }
+  .adv-set > summary {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; cursor: pointer; list-style: none; user-select: none;
+    border-radius: 10px;
+  }
+  .adv-set > summary::-webkit-details-marker { display: none; }
+  .adv-set > summary:hover { background: #f1f5f9; }
+  .adv-set[open] > summary { border-bottom: 1px solid var(--border); border-radius: 10px 10px 0 0; }
+  .adv-set .adv-title { font-weight: 500; font-size: 13px; white-space: nowrap; }
+  .adv-set .adv-sum { color: var(--muted); font-size: 12px; flex: 1; min-width: 200px; }
+  .adv-set .adv-proj {
+    font-size: 12px; color: var(--primary); background: #eff6ff;
+    border: 1px solid #bfdbfe; border-radius: 20px; padding: 1px 10px; white-space: nowrap;
+    max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  }
+  .adv-set .adv-newproj { font-size: 12px; padding: 3px 10px; white-space: nowrap; }
+  .adv-set .adv-arrow { color: var(--muted); font-size: 11px; transition: transform .15s; }
+  .adv-set[open] .adv-arrow { transform: rotate(180deg); }
+  .adv-body { padding: 12px 14px 14px; display: grid; gap: 12px; }
+
   /* 历史记录 */
   .hist-item {
     border: 1px solid var(--border);
@@ -284,29 +309,34 @@
         <label>统一视觉风格（可选，附加到每一页）</label>
         <input type="text" id="global_style" placeholder="例如：清新卡通插画风，明快配色，适合中小学生">
       </div>
-      <div style="grid-column: 1 / -1;">
-        <label>输出文件保存路径（PPTX / ZIP，留空则保存到默认 output 目录）</label>
-        <input type="text" id="output_dir" placeholder="例如：D:\我的PPT  或  留空使用默认路径">
-        <div class="hint">生成的 PPTX 与 图片 ZIP 将保存到此目录；目录不存在会自动创建。</div>
-      </div>
-      <div style="grid-column: 1 / -1;">
-        <label>图片保存目录（生图 / 图表 / 母版 / 参考图，留空则保存到默认 output/images）</label>
-        <input type="text" id="images_dir" placeholder="例如：D:\PPT素材\图片  或  留空使用默认路径">
-        <div class="hint">生成的页面图、图表、风格母版与参考图将保存到此目录，母版/参考图存放在该目录的 <b>masters</b> 子文件夹；目录不存在会自动创建。与上方 PPTX/ZIP 输出路径互不影响。</div>
-      </div>
-      <div style="grid-column: 1 / -1;">
-        <label>当前项目（每个项目一个子文件夹；页面图 / 图表落到其下，母版仍存上面的 masters）</label>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <span id="projectLabel" style="color:var(--muted); font-size:13px; min-width:200px;">未创建项目（生图时会按当天日期兜底）</span>
-          <button type="button" onclick="newProject()">新建项目</button>
-        </div>
-        <div class="hint">项目子文件夹命名：<b>YYYYMMDD_项目名</b>；同日同名追加 _2/_3。A 链（手动逐页）建议先点「新建项目」；B 链上传文档时会自动创建并回填。</div>
-      </div>
+      <!-- 输出路径 / 图片保存目录 / 当前项目 已收进下方「⚙ 输出与项目设置」折叠面板 -->
       <div style="grid-column: 1 / -1; display:flex; align-items:center; gap:8px; margin-top:2px;">
         <input type="checkbox" id="skip_proxy" style="width:auto;">
         <label style="margin:0;">跳过系统代理（直连）：遇到 ProxyError / 远程连接被关闭时勾选此项</label>
       </div>
     </div>
+    <details class="adv-set" id="advSet">
+      <summary>
+        <span class="adv-title">⚙ 输出与项目设置</span>
+        <span class="adv-sum" id="advSum">输出：默认 output · 图片：默认 output/images</span>
+        <span class="adv-proj" id="projectLabel">未创建项目</span>
+        <button type="button" class="ghost adv-newproj" onclick="event.preventDefault(); event.stopPropagation(); newProject();">＋ 新建项目</button>
+        <span class="adv-arrow">▾</span>
+      </summary>
+      <div class="adv-body">
+        <div>
+          <label>输出文件保存路径（PPTX / ZIP，留空则保存到默认 output 目录）</label>
+          <input type="text" id="output_dir" placeholder="例如：D:\我的PPT  或  留空使用默认路径">
+          <div class="hint">生成的 PPTX 与 图片 ZIP 将保存到此目录；目录不存在会自动创建。</div>
+        </div>
+        <div>
+          <label>图片保存目录（生图 / 图表 / 母版 / 参考图，留空则保存到默认 output/images）</label>
+          <input type="text" id="images_dir" placeholder="例如：D:\PPT素材\图片  或  留空使用默认路径">
+          <div class="hint">生成的页面图、图表、风格母版与参考图将保存到此目录，母版/参考图存放在该目录的 <b>masters</b> 子文件夹；目录不存在会自动创建。与上方 PPTX/ZIP 输出路径互不影响。</div>
+        </div>
+        <div class="hint" style="margin:0;">项目子文件夹命名：<b>YYYYMMDD_项目名</b>，页面图 / 图表落到该子文件夹下（母版仍存上面的 masters）；同日同名追加 _2/_3。A 链（手动逐页）建议先点「＋ 新建项目」；B 链上传文档时会自动创建并回填。</div>
+      </div>
+    </details>
     <div class="toolbar" style="margin-top:12px;">
       <button type="button" class="primary" onclick="saveSettings()">保存到本机</button>
       <button type="button" onclick="clearSettings()">清空设置</button>
@@ -402,28 +432,38 @@
     <div class="hint" id="capHint">中转站能力：未检测。生成时会按「原生多图 → 拼贴单图 → 仅主图」自动降级并在结果里提示。</div>
     <div class="hint">每张参考图可指定角色：<b>风格母版</b>（配色/背景/字体/装饰/版式）、<b>人物/主体</b>（锁脸与服装）、<b>版式骨架</b>（只学构图分区）、<b>素材元素</b>（复用物件图标）、<b>自定义</b>。顺序即编号，模型按 「image 1 / image 2 …」逐一遵循。也可在下方任意一张已生成的图片上点「加入参考图」。</div>
 
-    <h3 style="margin-top:18px;">AI 生成风格母版（可选）</h3>
-    <div class="hint" style="margin-top:0">写一句风格意图，或点选下方预设，先用 DeepSeek 优化成英文生图提示词，可手动微调后再生成 1~3 张候选样张。</div>
-    <div style="margin-top:8px;">
-      <label>风格描述（可空，留空则自动归纳）</label>
-      <textarea id="style_desc" placeholder="例：信息技术课件，深蓝科技风，几何线条与网络节点装饰，扁平插画，留白多" style="min-height:52px;"></textarea>
-    </div>
-    <div class="sm-chips" id="stylePresets"></div>
-    <div class="opt-row" style="margin-top:8px;">
-      <label style="margin:0;">优化后的风格提示词（可手动编辑，再生成候选）</label>
-      <button type="button" class="ghost" id="optStyleBtn" onclick="optimizeStylePrompt()">优化风格提示词</button>
-    </div>
-    <textarea id="style_prompt" placeholder="点上方「优化风格提示词」由 DeepSeek 生成英文母版提示词；留空则后端自动优化" style="min-height:88px; font-family:monospace; font-size:12px;"></textarea>
-    <div class="key-row" style="margin-top:10px; max-width:420px;">
-      <label style="margin:0; white-space:nowrap;">生成数量</label>
-      <select id="style_count" style="width:auto;">
-        <option value="1">1 张</option>
-        <option value="2" selected>2 张</option>
-        <option value="3">3 张</option>
-      </select>
-      <button type="button" class="primary" id="genStyleBtn" onclick="genStyleMaster()">生成候选</button>
-    </div>
-    <div id="styleCandidates" class="sm-grid" style="margin-top:12px;"></div>
+    <details class="adv-set" id="styleSet">
+      <summary>
+        <span class="adv-title">🎨 AI 生成风格母版</span>
+        <span class="adv-sum" id="styleSum">写风格意图 → DeepSeek 归纳 → 生成 1~3 张母版候选</span>
+        <span class="adv-arrow">▾</span>
+      </summary>
+      <div class="adv-body">
+        <div class="hint" style="margin:0;">写一句风格意图，或点选下方预设，先用 DeepSeek 优化成英文生图提示词，可手动微调后再生成 1~3 张候选样张；选中一张即可加入上方参考图集。</div>
+        <div>
+          <label>风格描述（可空，留空则自动归纳）</label>
+          <textarea id="style_desc" placeholder="例：信息技术课件，深蓝科技风，几何线条与网络节点装饰，扁平插画，留白多" style="min-height:52px;"></textarea>
+        </div>
+        <div class="sm-chips" id="stylePresets" style="margin-top:0;"></div>
+        <div>
+          <div class="opt-row">
+            <label style="margin:0;">优化后的风格提示词（可手动编辑，再生成候选）</label>
+            <button type="button" class="ghost" id="optStyleBtn" onclick="optimizeStylePrompt()">优化风格提示词</button>
+          </div>
+          <textarea id="style_prompt" placeholder="点上方「优化风格提示词」由 DeepSeek 生成英文母版提示词；留空则后端自动优化" style="min-height:88px; font-family:monospace; font-size:12px;"></textarea>
+        </div>
+        <div class="key-row" style="max-width:420px;">
+          <label style="margin:0; white-space:nowrap;">生成数量</label>
+          <select id="style_count" style="width:auto;">
+            <option value="1">1 张</option>
+            <option value="2" selected>2 张</option>
+            <option value="3">3 张</option>
+          </select>
+          <button type="button" class="primary" id="genStyleBtn" onclick="genStyleMaster()">生成候选</button>
+        </div>
+        <div id="styleCandidates" class="sm-grid"></div>
+      </div>
+    </details>
   </div>
 
   <!-- ④ 页面内容与生图 -->
@@ -496,6 +536,8 @@ const REF_ROLE_ORDER = ['style', 'character', 'layout', 'element', 'custom'];
 const REF_WEIGHT_LABEL = { 5: '5 最高', 4: '4 高', 3: '3 中', 2: '2 低', 1: '1 最低' };
 const REF_LOCAL_KEY = 'ppt_tool_refs';
 const HARD_REF_LIMIT = 16;
+const ADV_SET_KEY = 'ppt_tool_adv_open';     // 「⚙ 输出与项目设置」折叠状态
+const STYLE_SET_KEY = 'ppt_tool_style_open'; // 「🎨 AI 生成风格母版」折叠状态
 
 // 图表类型：精确类走 matplotlib 绘图，示意类走生图
 const PRECISE_CHARTS = ['radar', 'bar', 'pie'];
@@ -599,13 +641,66 @@ function syncImagesDirToServer() {
   postJson('/api/set_images_dir', { images_dir: d }).catch(() => {});
 }
 
-// 刷新「当前项目」标签显示
+// 刷新「当前项目」标签显示（位于「⚙ 输出与项目设置」折叠条上）
 function updateProjectLabel() {
   const el = $('projectLabel');
+  if (el) {
+    el.textContent = state.projectName ? ('📂 ' + state.projectName) : '📂 未创建项目';
+    el.title = state.projectName
+      ? '当前项目：' + state.projectName + '（页面图 / 图表将保存到该子文件夹）'
+      : '未创建项目：生图时会按当天日期兜底创建子文件夹';
+  }
+  refreshAdvSummary();
+}
+
+// 刷新折叠条上的「当前生效路径」摘要（收起状态下也能一眼看到）
+function refreshAdvSummary() {
+  const el = $('advSum');
   if (!el) return;
-  el.textContent = state.projectName
-    ? ('当前项目：' + state.projectName)
-    : '未创建项目（生图时会按当天日期兜底）';
+  const od = $('output_dir') ? $('output_dir').value.trim() : '';
+  const idir = $('images_dir') ? $('images_dir').value.trim() : '';
+  el.textContent = '输出：' + (od || '默认 output') + ' · 图片：' + (idir || '默认 output/images');
+  el.title = 'PPTX / ZIP 输出：' + (od || '默认 output 目录')
+    + '\n图片 / 图表 / 母版 / 参考图：' + (idir || '默认 output/images');
+}
+
+// 折叠状态记忆到本地，刷新后保持
+function bindCollapse(boxId, key) {
+  const box = $(boxId);
+  if (!box) return;
+  let open = false;
+  try { open = localStorage.getItem(key) === '1'; } catch (e) {}
+  box.open = open;
+  box.addEventListener('toggle', () => {
+    try { localStorage.setItem(key, box.open ? '1' : '0'); } catch (e) {}
+  });
+}
+
+// 以代码方式展开/收起某个折叠面板（同步写入记忆）
+function setCollapseOpen(boxId, key, open) {
+  const box = $(boxId);
+  if (!box) return;
+  box.open = !!open;
+  try { localStorage.setItem(key, open ? '1' : '0'); } catch (e) {}
+}
+
+function initAdvSet() {
+  bindCollapse('advSet', ADV_SET_KEY);
+  bindCollapse('styleSet', STYLE_SET_KEY);
+  ['output_dir', 'images_dir'].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener('input', refreshAdvSummary);
+  });
+}
+
+// 刷新「AI 生成风格母版」折叠条摘要
+function refreshStyleSum() {
+  const el = $('styleSum');
+  if (!el) return;
+  const n = (state.styleCandidates || []).length;
+  el.textContent = n
+    ? `已有 ${n} 张候选样张，点选即可加入参考图`
+    : '写风格意图 → DeepSeek 归纳 → 生成 1~3 张母版候选';
 }
 
 // 后端兜底建项目时会回传 project_name，这里统一回填显示 + 持久化
@@ -1274,7 +1369,8 @@ async function genStyleMaster() {
     const data = await postJson('/api/gen_style_master', body);
     state.styleCandidates = data.candidates || [];
     renderCandidates();
-    toast('已生成 ' + state.styleCandidates.length + ' 张候选，点选一张设为母版');
+    setCollapseOpen('styleSet', STYLE_SET_KEY, true);  // 生成后自动展开，方便直接挑选
+    toast('已生成 ' + state.styleCandidates.length + ' 张候选，点选一张加入参考图');
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -1282,6 +1378,7 @@ async function genStyleMaster() {
   }
 }
 function renderCandidates() {
+  refreshStyleSum();
   const box = $('styleCandidates');
   if (!state.styleCandidates || !state.styleCandidates.length) { box.innerHTML = ''; return; }
   box.innerHTML = state.styleCandidates.map((c, i) => {
@@ -1906,6 +2003,8 @@ function doRestoreHistory(id) {
   if ($('style_count')) $('style_count').value = s.style_count || '2';
   $('output_dir').value = s.output_dir || '';
   $('images_dir').value = s.images_dir || '';
+  state.projectName = s.project_name || '';
+  updateProjectLabel();
 
   const ws = (snap.workState && typeof snap.workState === 'object') ? snap.workState : {};
   state.nextId = ws.nextId || 1;
@@ -2049,6 +2148,7 @@ function importHistory(ev) {
 
 // ---------------- 启动 ----------------
 loadSettings();
+initAdvSet();
 syncImagesDirToServer();
 renderStylePresets();
 loadRefsLocal();
