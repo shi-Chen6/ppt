@@ -137,6 +137,29 @@
   .toast.show { display: block; }
   @media (max-width: 720px) { .page-body { grid-template-columns: 1fr; } }
 
+  /* 多参考图 */
+  .ref-drop {
+    border: 1px dashed var(--border); border-radius: 10px; padding: 16px; text-align: center;
+    color: var(--muted); font-size: 13px; background: #fafbfd; cursor: pointer; transition: .15s;
+  }
+  .ref-drop.over { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+  .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-top: 12px; }
+  .ref-card { border: 1px solid var(--border); border-radius: 10px; padding: 8px; background: #fafbfd; position: relative; }
+  .ref-card.off { opacity: .5; }
+  .ref-card img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; background: #fff; }
+  .ref-card .ref-idx {
+    position: absolute; top: 12px; left: 12px; background: var(--primary); color: #fff;
+    border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 600;
+  }
+  .ref-card .ref-main { position: absolute; top: 12px; right: 12px; background: var(--amber); color: #fff; border-radius: 20px; padding: 1px 8px; font-size: 11px; }
+  .ref-card .ref-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .ref-card .ref-row label { margin: 0; font-size: 12px; white-space: nowrap; }
+  .ref-card .ref-row select, .ref-card .ref-row input[type=text] { font-size: 12px; padding: 4px 6px; }
+  .ref-card .ref-btns { display: flex; gap: 4px; margin-top: 6px; }
+  .ref-card .ref-btns button { font-size: 12px; padding: 3px 7px; }
+  .sm-chips .chip.active { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+
   /* 历史记录 */
   .hist-item {
     border: 1px solid var(--border);
@@ -173,7 +196,7 @@
 <div class="wrap">
   <header>
     <h1>PPT 智能生成工具 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:400;"><img src="https://img.meituan.net/content/1287b66686c7dbbbec4fa47fafdd803631203.jpg" alt="CZT" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">作者：CZT ©2026</span></h1>
-    <p>上传文档 / 粘贴内容 → 生成大纲与文案 → gpt-image-2 生成 16:9 页面 → 拼成 PPTX（可锁人物长相）</p>
+    <p>上传文档 / 粘贴内容 → 生成大纲与文案 → gpt-image-2 生成 16:9 页面 → 拼成 PPTX（支持多张参考图：风格 / 人物 / 版式 / 素材）</p>
   </header>
 
   <!-- ① API 设置 -->
@@ -342,22 +365,42 @@
     <div id="docArea"></div>
   </div>
 
-  <!-- ③ 风格母版 / 锁长相 -->
+  <!-- ③ 参考图库（多参考图） -->
   <div class="card">
-    <h2>③ 风格母版 / 锁长相（可选，统一整批风格）</h2>
-    <div class="key-row" style="max-width:420px">
-      <input type="file" id="refFile" accept=".png,.jpg,.jpeg,.webp">
-      <button type="button" class="primary" onclick="uploadRef()">上传母版图</button>
+    <h2>③ 参考图库 / 多参考图（可选，统一整批风格）</h2>
+    <div class="ref-drop" id="refDrop">
+      拖拽多张图片到此处，或点击选择（png / jpg / webp，单张 ≤10MB，建议不超过 <b id="refLimit">6</b> 张）
     </div>
-    <div style="max-width:420px; margin-top:10px;">
-      <label style="display:block; font-size:13px; color:var(--muted); margin-bottom:4px;">锁定范围</label>
-      <select id="lock_scope">
-        <option value="style">整体风格（配色/背景/字体/装饰/版式，推荐用于统一课件）</option>
-        <option value="face">仅锁人物长相</option>
-      </select>
+    <input type="file" id="refFiles" accept=".png,.jpg,.jpeg,.webp" multiple style="display:none;">
+    <div class="toolbar" style="margin-top:12px;">
+      <button type="button" class="primary" onclick="document.getElementById('refFiles').click()">上传参考图</button>
+      <button type="button" onclick="openRefLibrary()">从参考图库选择</button>
+      <button type="button" onclick="probeCapability()">检测中转站多图支持</button>
+      <button type="button" class="danger" onclick="clearRefs()">清空参考图</button>
+      <div class="spacer"></div>
+      <span class="hint" style="margin:0;" id="refCountHint"></span>
     </div>
-    <div class="hint">上传一张"风格母版"后，整批生图都会以它为参考，保持配色、背景、字体、装饰、版式一致。也可在下方任意一张已生成的图片上点"设为风格母版"来指定。</div>
-    <div id="refPreview" class="ref-box" style="margin-top:10px"></div>
+    <div id="refGrid" class="ref-grid"></div>
+
+    <div class="grid" style="margin-top:12px;">
+      <div>
+        <label>锁定范围</label>
+        <select id="lock_scope">
+          <option value="style">整体风格（配色/背景/字体/装饰/版式，推荐用于统一课件）</option>
+          <option value="face">仅锁人物长相</option>
+        </select>
+      </div>
+      <div>
+        <label>还原力度 input_fidelity</label>
+        <select id="input_fidelity">
+          <option value="auto" selected>自动（有风格/人物参考图时用 high）</option>
+          <option value="high">high（更忠实、费用更高）</option>
+          <option value="low">low（更省）</option>
+        </select>
+      </div>
+    </div>
+    <div class="hint" id="capHint">中转站能力：未检测。生成时会按「原生多图 → 拼贴单图 → 仅主图」自动降级并在结果里提示。</div>
+    <div class="hint">每张参考图可指定角色：<b>风格母版</b>（配色/背景/字体/装饰/版式）、<b>人物/主体</b>（锁脸与服装）、<b>版式骨架</b>（只学构图分区）、<b>素材元素</b>（复用物件图标）、<b>自定义</b>。顺序即编号，模型按 「image 1 / image 2 …」逐一遵循。也可在下方任意一张已生成的图片上点「加入参考图」。</div>
 
     <h3 style="margin-top:18px;">AI 生成风格母版（可选）</h3>
     <div class="hint" style="margin-top:0">写一句风格意图，或点选下方预设，先用 DeepSeek 优化成英文生图提示词，可手动微调后再生成 1~3 张候选样张。</div>
@@ -434,11 +477,25 @@ const state = {
   docText: '',
   outline: [],        // [{title, points(换行文本), visual}]
   pagesContent: [],   // [{title, content, visual, prompt}]
-  refImage: '',
-  refUrl: '',
+  refImages: [],      // 有序参考图集：[{id, filename, url, role, weight, enabled, note}]，顺序即编号
+  refMax: 6,          // 建议上限（模型硬顶 16）
   styleCandidates: [],
   projectName: '',    // 当前活跃项目子文件夹名（YYYYMMDD_项目名）；空表示未创建
 };
+
+// 参考图角色：值 → 中文标签（与后端 REF_ROLE_LABEL 对应）
+const REF_ROLES = [
+  ['style', '风格母版'],
+  ['character', '人物/主体'],
+  ['layout', '版式骨架'],
+  ['element', '素材元素'],
+  ['custom', '自定义'],
+];
+const REF_ROLE_LABEL = { style: '风格母版', character: '人物/主体', layout: '版式骨架', element: '素材元素', custom: '自定义' };
+const REF_ROLE_ORDER = ['style', 'character', 'layout', 'element', 'custom'];
+const REF_WEIGHT_LABEL = { 5: '5 最高', 4: '4 高', 3: '3 中', 2: '2 低', 1: '1 最低' };
+const REF_LOCAL_KEY = 'ppt_tool_refs';
+const HARD_REF_LIMIT = 16;
 
 // 图表类型：精确类走 matplotlib 绘图，示意类走生图
 const PRECISE_CHARTS = ['radar', 'bar', 'pie'];
@@ -510,6 +567,7 @@ function getSettings() {
     img_quality: $('img_quality').value,
     global_style: $('global_style').value.trim(),
     lock_scope: $('lock_scope').value,
+    input_fidelity: $('input_fidelity') ? $('input_fidelity').value : 'auto',
     auto_master: $('auto_master').checked,
     skip_proxy: $('skip_proxy').checked,
     style_count: $('style_count') ? $('style_count').value : '2',
@@ -587,6 +645,7 @@ function loadSettings() {
   $('img_quality').value = (s && s.img_quality) || 'high';
   $('global_style').value = (s && s.global_style) || '';
   $('lock_scope').value = (s && s.lock_scope) || 'style';
+  if ($('input_fidelity')) $('input_fidelity').value = (s && s.input_fidelity) || 'auto';
   $('auto_master').checked = !!(s && s.auto_master);
   $('skip_proxy').checked = !!(s && s.skip_proxy);
   if ($('style_count')) $('style_count').value = (s && s.style_count) || '2';
@@ -609,6 +668,7 @@ function clearSettings() {
   $('img_quality').value = 'high';
   $('global_style').value = '';
   $('lock_scope').value = 'style';
+  if ($('input_fidelity')) $('input_fidelity').value = 'auto';
   $('auto_master').checked = false;
   $('skip_proxy').checked = false;
   if ($('style_count')) $('style_count').value = '2';
@@ -818,41 +878,332 @@ function importToPages() {
   $('pages').scrollIntoView({ behavior: 'smooth' });
 }
 
-// ---------------- ③ 人物设定图 ----------------
-async function uploadRef() {
-  const f = $('refFile').files[0];
-  if (!f) { toast('请先选择图片', true); return; }
+// ---------------- ③ 参考图集（多参考图） ----------------
+function refOptionsHtml(sel) {
+  return REF_ROLES.map(([v, l]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${l}</option>`).join('');
+}
+function weightOptionsHtml(sel) {
+  return [5, 4, 3, 2, 1].map((w) => `<option value="${w}"${w === Number(sel) ? ' selected' : ''}>${REF_WEIGHT_LABEL[w]}</option>`).join('');
+}
+
+function makeRefItem(filename, url, role, weight, note, enabled) {
+  return {
+    id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    filename: filename,
+    url: url || ('/api/image/' + filename),
+    role: (role && REF_ROLE_LABEL[role]) ? role : 'style',
+    weight: Math.min(5, Math.max(1, parseInt(weight, 10) || 5)),
+    enabled: enabled !== false,
+    note: note || '',
+  };
+}
+
+// 本地持久化（只存引用与角色，不存图片本体）
+function saveRefsLocal() {
   try {
-    const fd = new FormData();
-    fd.append('file', f);
-    fd.append('images_dir', getSettings().images_dir);
+    const slim = state.refImages.map((r) => ({
+      filename: r.filename, url: r.url, role: r.role,
+      weight: r.weight, enabled: r.enabled, note: r.note,
+    }));
+    localStorage.setItem(REF_LOCAL_KEY, JSON.stringify(slim));
+  } catch (e) { /* 存储已满时静默 */ }
+}
+
+function loadRefsLocal() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(REF_LOCAL_KEY) || '[]');
+    if (Array.isArray(arr)) {
+      state.refImages = arr.filter((r) => r && r.filename)
+        .map((r) => makeRefItem(r.filename, r.url, r.role, r.weight, r.note, r.enabled));
+    }
+  } catch (e) { state.refImages = []; }
+}
+
+// 加入参考图（去重）；返回 {added, dup}
+function addRefs(items) {
+  let added = 0, dup = 0;
+  (items || []).forEach((it) => {
+    if (!it || !it.filename) return;
+    if (state.refImages.some((r) => r.filename === it.filename)) { dup++; return; }
+    if (state.refImages.length >= HARD_REF_LIMIT) return;
+    state.refImages.push(makeRefItem(it.filename, it.url, it.role, it.weight, it.note, true));
+    added++;
+  });
+  if (added) { saveRefsLocal(); renderRefGrid(); }
+  return { added, dup };
+}
+
+// 提交给后端的载荷：仅启用项，顺序即编号
+function refPayload(list) {
+  return (list || state.refImages)
+    .filter((r) => r.enabled && r.filename)
+    .map((r) => ({ filename: r.filename, role: r.role, weight: r.weight, note: r.note || '' }));
+}
+
+// 单页参考图：勾选了就用本页专用子集，否则继承全局
+function pageRefPayload(p) {
+  if (p && Array.isArray(p.refPick) && p.refPick.length) {
+    const picked = state.refImages.filter((r) => p.refPick.indexOf(r.filename) >= 0);
+    if (picked.length) return refPayload(picked);
+  }
+  return refPayload();
+}
+
+// 主图 = 角色优先级最高、权重最大的一张（降级到「仅主图」时用它）
+function primaryRef() {
+  const en = state.refImages.filter((r) => r.enabled);
+  if (!en.length) return null;
+  return en.slice().sort((a, b) =>
+    (REF_ROLE_ORDER.indexOf(a.role) - REF_ROLE_ORDER.indexOf(b.role)) || (b.weight - a.weight))[0];
+}
+
+function renderRefGrid() {
+  const box = $('refGrid');
+  const hint = $('refCountHint');
+  if (hint) {
+    hint.textContent = state.refImages.length
+      ? `共 ${state.refImages.length} 张（启用 ${refPayload().length} 张）`
+      : '';
+  }
+  if (!box) return;
+  if (!state.refImages.length) { box.innerHTML = ''; return; }
+  const primary = primaryRef();
+  box.innerHTML = state.refImages.map((r, i) => `
+    <div class="ref-card${r.enabled ? '' : ' off'}">
+      <img src="${r.url}" alt="参考图 ${i + 1}">
+      <span class="ref-idx">${i + 1}</span>
+      ${primary && primary.id === r.id ? '<span class="ref-main">主图</span>' : ''}
+      <div class="ref-row"><label>角色</label><select onchange="setRefField('${r.id}','role',this.value)">${refOptionsHtml(r.role)}</select></div>
+      <div class="ref-row"><label>权重</label><select onchange="setRefField('${r.id}','weight',parseInt(this.value,10))">${weightOptionsHtml(r.weight)}</select></div>
+      ${r.role === 'custom' ? `<div class="ref-row"><input type="text" placeholder="自定义说明（英文亦可）" value="${escapeHtml(r.note)}" oninput="setRefField('${r.id}','note',this.value)"></div>` : ''}
+      <div class="ref-row"><label style="display:flex;align-items:center;gap:5px;margin:0;"><input type="checkbox" style="width:auto;" ${r.enabled ? 'checked' : ''} onchange="setRefField('${r.id}','enabled',this.checked)"> 参与本次生成</label></div>
+      <div class="ref-btns">
+        <button type="button" class="ghost" onclick="moveRef('${r.id}',-1)" title="上移（编号前移）">↑</button>
+        <button type="button" class="ghost" onclick="moveRef('${r.id}',1)" title="下移（编号后移）">↓</button>
+        <button type="button" class="ghost danger" onclick="removeRef('${r.id}')">删除</button>
+      </div>
+    </div>`).join('');
+}
+
+function setRefField(id, field, value) {
+  const r = state.refImages.find((x) => x.id === id);
+  if (!r) return;
+  r[field] = value;
+  saveRefsLocal();
+  if (field === 'role' || field === 'enabled' || field === 'weight') renderRefGrid();
+  if (field === 'role' || field === 'enabled') renderPages();
+}
+
+function moveRef(id, dir) {
+  const i = state.refImages.findIndex((x) => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.refImages.length) return;
+  const t = state.refImages[i];
+  state.refImages[i] = state.refImages[j];
+  state.refImages[j] = t;
+  saveRefsLocal();
+  renderRefGrid();
+  renderPages();
+  toast('已调整顺序：编号 ' + (j + 1) + ' ↔ ' + (i + 1));
+}
+
+function removeRef(id) {
+  const r = state.refImages.find((x) => x.id === id);
+  if (!r) return;
+  state.refImages = state.refImages.filter((x) => x.id !== id);
+  saveRefsLocal();
+  renderRefGrid();
+  renderPages();
+  toast('已从参考图列表移除（磁盘文件仍保留在 masters 目录）');
+}
+
+function clearRefs() {
+  if (!state.refImages.length) { toast('参考图列表已是空的'); return; }
+  state.refImages = [];
+  saveRefsLocal();
+  renderRefGrid();
+  renderPages();
+  toast('已清空参考图列表（磁盘文件仍保留，可从参考图库重新加入）');
+}
+
+// 上传 1~N 张：一次性多文件提交
+async function uploadRefFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const over = files.filter((f) => f.size > 10 * 1024 * 1024);
+  if (over.length) {
+    toast(`${over.length} 张超过 10MB 已忽略：${over.map((f) => f.name).join('、')}`, true);
+  }
+  const ok = files.filter((f) => f.size <= 10 * 1024 * 1024);
+  if (!ok.length) return;
+
+  const fd = new FormData();
+  ok.forEach((f) => fd.append('files', f));
+  fd.append('images_dir', getSettings().images_dir);
+  try {
     const data = await postForm('/api/upload_ref', fd);
-    state.refImage = data.filename;
-    state.refUrl = data.url;
-    renderRef();
-    toast('风格母版已上传，整批生图将沿用其风格');
+    const r = addRefs(data.items || []);
+    const skipped = (data.skipped || []).length;
+    let msg = `已加入 ${r.added} 张参考图`;
+    if (r.dup) msg += `，跳过重复 ${r.dup} 张`;
+    if (skipped) msg += `，${skipped} 张格式不支持`;
+    toast(msg);
+    if (state.refImages.length > state.refMax) {
+      toast(`参考图共 ${state.refImages.length} 张，已超过建议上限 ${state.refMax} 张，可能出现指令互相干扰`, true);
+    }
   } catch (e) {
     toast(e.message, true);
   }
 }
-function renderRef() {
-  const box = $('refPreview');
-  if (!state.refUrl) { box.innerHTML = ''; return; }
-  box.innerHTML = '<img src="' + state.refUrl + '" alt="风格母版">' +
-    '<div><div class="hint" style="margin-top:0">已启用风格母版（整批统一）</div>' +
-    '<button type="button" class="ghost danger" onclick="clearRef()">移除母版</button></div>';
+
+// 参考图库（masters 目录）：列出并加入
+async function openRefLibrary() {
+  const s = getSettings();
+  try {
+    const r = await fetch('/api/list_refs?images_dir=' + encodeURIComponent(s.images_dir || ''));
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || '读取图库失败');
+    const items = data.items || [];
+    window.__refLibrary = items;
+    if (!items.length) { toast('参考图库里还没有图片，先上传几张吧'); return; }
+    openModal(`
+      <h3>参考图库（masters 目录，共 ${items.length} 张）</h3>
+      <div class="hint" style="margin-top:0">点「加入」把图片放进本次生成的参考图列表（可多选）。</div>
+      <div class="sm-grid" style="max-height:340px; overflow:auto; margin-top:10px;">
+        ${items.map((it, i) => {
+          const chosen = state.refImages.some((x) => x.filename === it.filename);
+          return `<div class="sm-card${chosen ? ' selected' : ''}">
+            <img src="${it.url}" alt="${escapeHtml(it.filename)}">
+            <div style="font-size:11px;color:var(--muted);margin-top:6px;word-break:break-all;">${escapeHtml(it.filename)}</div>
+            <div class="sm-btn-row">
+              <button type="button" class="${chosen ? 'primary' : ''}" onclick="addRefFromLibrary(${i})">${chosen ? '已加入' : '加入'}</button>
+              <button type="button" class="danger" onclick="deleteRefFile(${i})">删除文件</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="modal-actions"><button type="button" onclick="closeModal()">关闭</button></div>
+    `);
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
-function clearRef() {
-  state.refImage = '';
-  state.refUrl = '';
-  renderRef();
-  toast('已移除风格母版');
+
+function addRefFromLibrary(i) {
+  const it = (window.__refLibrary || [])[i];
+  if (!it) return;
+  const r = addRefs([it]);
+  toast(r.added ? '已加入参考图' : '该图已在参考图列表中');
+  openRefLibrary();
 }
+
+async function deleteRefFile(i) {
+  const it = (window.__refLibrary || [])[i];
+  if (!it) return;
+  if (!confirm('确定删除参考图文件「' + it.filename + '」？此操作不可撤销。')) return;
+  try {
+    await postJson('/api/delete_ref', { filename: it.filename, images_dir: getSettings().images_dir });
+    state.refImages = state.refImages.filter((x) => x.filename !== it.filename);
+    saveRefsLocal();
+    renderRefGrid();
+    renderPages();
+    toast('已删除参考图文件');
+    openRefLibrary();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+// 探测中转站的多图支持
+async function probeCapability() {
+  const s = getSettings();
+  if (!s.openai_key) { toast('请先填写 OpenAI API Key', true); return; }
+  if (!s.openai_base_url) { toast('请先填写 OpenAI API 地址', true); return; }
+  const hint = $('capHint');
+  if (hint) hint.textContent = '中转站能力：检测中…（会真实发送一次 low 质量的极小请求）';
+  try {
+    const data = await postJson('/api/probe_edit_capability', {
+      openai_key: s.openai_key,
+      openai_base_url: s.openai_base_url,
+      openai_model: s.openai_model,
+      skip_proxy: s.skip_proxy,
+    });
+    const map = {
+      native_multi_array: '原生多图（image[] 重复）✓ 最佳',
+      native_multi_repeat: '原生多图（image 字段重复）✓ 可用',
+      single_only: '仅支持单图 ⚠ 将自动降级为拼贴/主图',
+      unknown: '未识别 ⚠ 生成时会自动降级',
+    };
+    if (hint) hint.textContent = '中转站能力：' + (map[data.mode] || data.mode) + (data.cached ? '（缓存结果）' : '');
+    toast('检测完成：' + (map[data.mode] || data.mode));
+  } catch (e) {
+    if (hint) hint.textContent = '中转站能力：检测失败 — ' + e.message;
+    toast(e.message, true);
+  }
+}
+
+// 已生成图片 → 加入参考图（默认风格母版，可再改角色）
 function setMaster(file, url) {
-  state.refImage = file;
-  state.refUrl = url;
-  renderRef();
-  toast('已将本图设为风格母版，后续生图将沿用其风格');
+  const r = addRefs([{ filename: file, url: url, role: 'style', weight: 5 }]);
+  toast(r.added ? '已加入参考图（角色：风格母版，可再调整）' : '该图已在参考图列表中');
+}
+
+// 页面级参考图子集
+function togglePageRef(pageId, filename) {
+  const p = getPage(pageId);
+  if (!p) return;
+  if (!Array.isArray(p.refPick)) p.refPick = [];
+  const i = p.refPick.indexOf(filename);
+  if (i >= 0) p.refPick.splice(i, 1); else p.refPick.push(filename);
+  renderPages();
+}
+
+function clearPageRef(pageId) {
+  const p = getPage(pageId);
+  if (!p) return;
+  p.refPick = [];
+  renderPages();
+  toast('本页已恢复继承全局参考图');
+}
+
+function refChipsHtml(p) {
+  const enabled = state.refImages.filter((r) => r.enabled);
+  if (!enabled.length) return '';
+  const picked = Array.isArray(p.refPick) ? p.refPick : [];
+  const chips = enabled.map((r) => {
+    const i = state.refImages.indexOf(r) + 1;
+    const on = picked.indexOf(r.filename) >= 0;
+    return `<button type="button" class="chip${on ? ' active' : ''}" onclick="togglePageRef(${p.id},'${r.filename}')" title="${escapeHtml(r.filename)}">#${i} ${REF_ROLE_LABEL[r.role] || r.role}</button>`;
+  }).join('');
+  return `<div class="field" style="grid-column:1/-1">
+    <div class="opt-row">
+      <label>本页参考图（不选 = 继承全局）</label>
+      <button type="button" class="ghost" onclick="clearPageRef(${p.id})">恢复继承</button>
+    </div>
+    <div class="sm-chips">${chips}</div>
+    <div class="hint" style="margin-top:4px">${picked.length ? '本页使用专用参考图子集，不与全局同步' : '当前继承全局参考图'}</div>
+  </div>`;
+}
+
+// 拖拽 / 选择上传绑定
+function initRefDrop() {
+  const drop = $('refDrop');
+  const input = $('refFiles');
+  const lim = $('refLimit');
+  if (lim) lim.textContent = state.refMax;
+  if (!drop || !input) return;
+  drop.addEventListener('click', () => input.click());
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('over');
+    uploadRefFiles(e.dataTransfer && e.dataTransfer.files);
+  });
+  input.addEventListener('change', (e) => {
+    uploadRefFiles(e.target.files);
+    e.target.value = '';
+  });
 }
 
 // ---------------- ③ AI 生成风格母版 ----------------
@@ -934,10 +1285,10 @@ function renderCandidates() {
   const box = $('styleCandidates');
   if (!state.styleCandidates || !state.styleCandidates.length) { box.innerHTML = ''; return; }
   box.innerHTML = state.styleCandidates.map((c, i) => {
-    const sel = state.refImage === c.filename;
+    const sel = state.refImages.some((r) => r.filename === c.filename);
     return `<div class="sm-card${sel ? ' selected' : ''}">
       <img src="${c.url}" alt="候选 ${i + 1}">
-      <div class="sm-btn-row"><button type="button" class="${sel ? 'primary' : ''}" onclick="setMasterCand('${c.filename}','${c.url}')">${sel ? '已选为母版' : '选为母版'}</button></div>
+      <div class="sm-btn-row"><button type="button" class="${sel ? 'primary' : ''}" onclick="setMasterCand('${c.filename}','${c.url}')">${sel ? '已加入参考图' : '加入参考图'}</button></div>
     </div>`;
   }).join('');
 }
@@ -958,6 +1309,7 @@ function addPage(data) {
     imageUrl: '',
     imageFile: '',
     status: '',
+    refPick: [],      // 本页专用参考图子集（filename 数组）；空 = 继承全局
   }, data || {});
   state.pages.push(p);
   renderPages();
@@ -1029,12 +1381,13 @@ function renderPages() {
           <select onchange="getPage(${p.id}).chart=this.value; renderPages()">${chartOptionsHtml(p.chart)}</select>
         </div>
         ${isPrecise ? `<div class="field" style="grid-column:1/-1"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{getPage(${p.id}).chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
+        ${isPrecise ? '' : refChipsHtml(p)}
       </div>
       <div class="page-actions">
         <button type="button" class="primary" onclick="optimizePage(${p.id})">优化提示词</button>
         <button type="button" onclick="generatePage(${p.id})">生成图片</button>
       </div>
-      ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx + 1} 页"><div style="margin-top:6px;"><button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">设为风格母版</button></div></div>` : ''}
+      ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx + 1} 页"><div style="margin-top:6px;"><button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">加入参考图</button></div></div>` : ''}
     </div>`;
   }).join('');
 }
@@ -1108,6 +1461,7 @@ async function generatePage(id) {
     } else {
       if (!p.prompt) { p.status = ''; renderPages(); toast('第 ' + idx + ' 页还没有提示词，请先优化或手动填写', true); return; }
       if (!s.openai_key) { p.status = ''; renderPages(); toast('请先填写 OpenAI Key', true); return; }
+      const refs = pageRefPayload(p);
       const body = {
         openai_key: s.openai_key,
         openai_base_url: s.openai_base_url,
@@ -1118,16 +1472,22 @@ async function generatePage(id) {
         format: 'png',
         index: idx,
         lock_scope: s.lock_scope,
+        input_fidelity: s.input_fidelity || 'auto',
         skip_proxy: s.skip_proxy,
         images_dir: s.images_dir,
         project_name: state.projectName,
       };
-      if (state.refImage) body.ref_image = state.refImage;
+      if (refs.length) body.ref_images = refs;
       const data = await postJson('/api/generate', body);
       p.imageUrl = data.url;
       p.imageFile = data.filename;
+      p.refMode = data.mode || '';
       p.status = 'ok';
-      toast('第 ' + idx + ' 页图片生成完成');
+      if (data.degraded && refs.length > 1) {
+        toast(`第 ${idx} 页已生成，但中转站不支持原生多图，已降级为「拼贴单图」（${data.ref_used}/${data.ref_total} 张仍参与）`, true);
+      } else {
+        toast('第 ' + idx + ' 页图片生成完成' + (refs.length ? `（参考图 ${refs.length} 张 · input_fidelity=${data.input_fidelity || '?'}）` : ''));
+      }
     }
   } catch (e) {
     p.status = 'err';
@@ -1193,7 +1553,7 @@ async function generateAll() {
   // ------- 首图自动当母版：先串行完成第一张非精确图表的页面 -------
   // 选出需要先单独串行跑的「首图」
   let firstMasterPage = null;
-  if (autoMaster && !state.refImage) {
+  if (autoMaster && !state.refImages.length) {
     firstMasterPage = renderablePages.find((p) => {
       const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
       return !isPrecise;  // 精确图表没有 AI 风格，不适合当母版
@@ -1210,13 +1570,16 @@ async function generateAll() {
     } catch (_) { /* generatePage 内部已经 toast，这里继续不中断 */ }
     finishedCount = 1;
     if (firstMasterPage.status === 'err') errorCount = 1;
-    // 设置母版（即使失败也不抛错，只是后续页面没母版可用而已）
+    // 把首图追加为参考图（风格母版）——append 而非覆盖，可与手动上传的多张共存
     const isPrecise = PRECISE_CHARTS.includes(firstMasterPage.chart) && firstMasterPage.chart_data;
-    if (!state.refImage && !isPrecise && firstMasterPage.imageFile) {
-      state.refImage = firstMasterPage.imageFile;
-      state.refUrl = firstMasterPage.imageUrl;
-      renderRef();
-      toast('已把首图设为风格母版，后续页面将沿用其风格');
+    if (!isPrecise && firstMasterPage.imageFile) {
+      const r = addRefs([{
+        filename: firstMasterPage.imageFile,
+        url: firstMasterPage.imageUrl,
+        role: 'style',
+        weight: 5,
+      }]);
+      if (r.added) toast('已把首图加入参考图（风格母版），后续页面将沿用其风格');
     }
     updateProgress(finishedCount, total, errorCount);
   }
@@ -1394,8 +1757,9 @@ function captureSnapshot() {
   // 先把输入框的内容同步到 state
   syncInputs();
   // 注意：pages 里每个字段都手动列出，避免把 transient 字段（busy 等）当作快照
+  const primary = primaryRef();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     savedAt: Date.now(),
     settings: getSettings(),   // 所有 ① 中的设置项
     workState: {
@@ -1403,13 +1767,20 @@ function captureSnapshot() {
         id: p.id, title: p.title, description: p.description, prompt: p.prompt,
         chart: p.chart || '', chart_data: p.chart_data || null,
         imageUrl: p.imageUrl || '', imageFile: p.imageFile || '', status: p.status || '',
+        refPick: Array.isArray(p.refPick) ? p.refPick.slice() : [],
       })),
       nextId: state.nextId,
       docText: state.docText || '',
       outline: state.outline || [],
       pagesContent: state.pagesContent || [],
-      refImage: state.refImage || '',
-      refUrl: state.refUrl || '',
+      // v2：多参考图集（顺序即编号）
+      refImages: state.refImages.map((r) => ({
+        filename: r.filename, url: r.url, role: r.role,
+        weight: r.weight, enabled: r.enabled, note: r.note,
+      })),
+      // 兼容字段：指向主图，便于旧版本读取
+      refImage: primary ? primary.filename : '',
+      refUrl: primary ? primary.url : '',
       styleCandidates: state.styleCandidates || [],
     },
   };
@@ -1422,7 +1793,7 @@ function saveHistoryDialog() {
     <h3>保存为历史记录</h3>
     <label>记录名称</label>
     <input type="text" id="histSaveName" value="${escapeHtml(defaultName)}" placeholder="留空则自动按时间命名" style="margin-bottom:6px;">
-    <div class="hint">将保存：所有 API 设置、文档/大纲/文案、风格母版、页面列表（标题/描述/提示词/图表/生成的图片引用）。</div>
+    <div class="hint">将保存：所有 API 设置、文档/大纲/文案、参考图集（角色/权重/顺序）、页面列表（标题/描述/提示词/图表/生成的图片引用/单页参考图）。</div>
     <div class="modal-actions">
       <button type="button" onclick="closeModal()">取消</button>
       <button type="button" class="primary" onclick="doSaveHistory()">保存</button>
@@ -1529,6 +1900,7 @@ function doRestoreHistory(id) {
   $('img_quality').value = s.img_quality || 'high';
   $('global_style').value = s.global_style || '';
   $('lock_scope').value = s.lock_scope || 'style';
+  if ($('input_fidelity')) $('input_fidelity').value = s.input_fidelity || 'auto';
   $('auto_master').checked = !!s.auto_master;
   $('skip_proxy').checked = !!s.skip_proxy;
   if ($('style_count')) $('style_count').value = s.style_count || '2';
@@ -1541,15 +1913,24 @@ function doRestoreHistory(id) {
   state.docText = ws.docText || '';
   state.outline = Array.isArray(ws.outline) ? ws.outline : [];
   state.pagesContent = Array.isArray(ws.pagesContent) ? ws.pagesContent : [];
-  state.refImage = ws.refImage || '';
-  state.refUrl = ws.refUrl || '';
+  // 参考图集：v2 用 refImages；v1 的 refImage 单图自动迁移为一张「风格母版」
+  const wsRefs = Array.isArray(ws.refImages) ? ws.refImages : [];
+  if (wsRefs.length) {
+    state.refImages = wsRefs.filter((r) => r && r.filename)
+      .map((r) => makeRefItem(r.filename, r.url, r.role, r.weight, r.note, r.enabled));
+  } else if (ws.refImage) {
+    state.refImages = [makeRefItem(ws.refImage, ws.refUrl, 'style', 5, '', true)];
+  } else {
+    state.refImages = [];
+  }
+  saveRefsLocal();
   state.styleCandidates = Array.isArray(ws.styleCandidates) ? ws.styleCandidates : [];
 
   // 重新渲染全部区域
   renderDoc();
   renderOutline();  // 大纲/文案若为空则 renderDoc/renderOutline/renderContent 自动不显示
   renderContent();
-  renderRef();
+  renderRefGrid();
   renderCandidates();
   renderPages();
 
@@ -1575,7 +1956,8 @@ function renderHistory() {
     const pageCount = (ws.pages && ws.pages.length) || 0;
     const imgCount = (ws.pages || []).filter((p) => p && p.imageFile).length;
     const hasDoc = (ws.docText && ws.docText.length) || (ws.outline && ws.outline.length) ? true : false;
-    const hasMaster = ws.refImage ? true : false;
+    const hasMaster = (ws.refImages && ws.refImages.length) || ws.refImage ? true : false;
+    const refN = (ws.refImages && ws.refImages.length) || (ws.refImage ? 1 : 0);
     return `
       <div class="hist-item">
         <div class="hist-head">
@@ -1586,7 +1968,7 @@ function renderHistory() {
           <span class="hist-badge">${pageCount} 页</span>
           ${imgCount ? `<span class="hist-badge ok">图 ${imgCount}</span>` : ''}
           ${hasDoc ? `<span class="hist-badge">含文档/大纲</span>` : ''}
-          ${hasMaster ? `<span class="hist-badge">含风格母版</span>` : ''}
+          ${hasMaster ? `<span class="hist-badge">参考图 ${refN}</span>` : ''}
         </div>
         <div class="hist-actions">
           <button type="button" class="primary" onclick="restoreHistory(${h.savedAt})">恢复到此状态</button>
@@ -1669,6 +2051,9 @@ function importHistory(ev) {
 loadSettings();
 syncImagesDirToServer();
 renderStylePresets();
+loadRefsLocal();
+renderRefGrid();
+initRefDrop();
 renderPages();
 renderHistory();
 </script>

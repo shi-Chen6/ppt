@@ -13,6 +13,7 @@ PPT 智能生成工具 —— 后端服务
 运行：python app.py  然后浏览器打开 http://127.0.0.1:5000
 """
 import base64
+import hashlib
 import io
 import json
 import os
@@ -23,7 +24,7 @@ from urllib.parse import quote
 
 import requests
 from flask import Flask, jsonify, request, send_from_directory
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -477,6 +478,216 @@ def _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_
     return _err(r.get("error") or "图片生成失败")
 
 
+# ---------------------------------------------------------------------------
+# 多参考图：角色清单 / 拼贴降级 / 能力探测
+# ---------------------------------------------------------------------------
+# GPT Image 系列在 /images/edits 上最多接受 16 张输入图；
+# 前端默认只建议 6 张，张数越多指令互相打架的概率越高。
+HARD_REF_LIMIT = 16
+MAX_REF_IMAGES = 6
+REF_INDEX_NAME = "refs_index.json"
+
+# 角色 → 写入 prompt 清单块的英文标签
+REF_ROLE_LABEL = {
+    "style": "STYLE MASTER",
+    "character": "CHARACTER",
+    "layout": "LAYOUT",
+    "element": "ELEMENT",
+    "custom": "EXTRA INSTRUCTION",
+}
+# 冲突消解优先级：风格 > 人物 > 版式 > 素材 > 自定义
+REF_ROLE_ORDER = {"style": 0, "character": 1, "layout": 2, "element": 3, "custom": 4}
+
+_RESAMPLE = getattr(Image, "Resampling", Image).LANCZOS
+
+
+def _role_instruction(role, who, note=""):
+    """按角色生成该张参考图对应的英文指令（who 形如 "image 1" 或 "panel 1"）。"""
+    if role == "character":
+        return ("keep the face, hairstyle, clothing and body proportions of the character "
+                f"in {who} identical")
+    if role == "layout":
+        return (f"follow only the composition skeleton of {who} - the zones for title, body "
+                "and visuals plus their relative proportions; do NOT copy its colours or text")
+    if role == "element":
+        return f"reuse the object, icon or illustration shown in {who} as a visual asset"
+    if role == "custom":
+        n = (note or "").strip()
+        if n:
+            return f"apply this extra instruction tied to {who}: {n}"
+        return f"use {who} as an additional visual reference"
+    return (f"reproduce the overall visual style of {who}: the exact colour palette, "
+            "background texture and tone, typography feel, decorative motifs, layout grid, "
+            "lighting and whitespace")
+
+
+def build_ref_manifest(items, mode="multi"):
+    """把有序参考图集编译成注入 prompt 的英文清单块。
+
+    items: [{"role":..., "note":...}, ...]，顺序即模型眼中的编号。
+    mode="multi"     —— 按 Image 1 / 2 / 3 引用（原生多图）。
+    mode="composite" —— 按 contact sheet 的 Panel 1 / 2 / 3 引用（拼贴单图降级）。
+    """
+    n = len(items)
+    if mode == "composite":
+        head = (f"A single reference image is attached. It is a contact sheet made of {n} numbered "
+                "panels separated by thin grey dividers, each panel carrying its number in the "
+                "bottom-right corner. The dividers and the corner numbers are layout guides only - "
+                "do NOT render them in the output. Treat each panel as a separate reference:")
+    elif n == 1:
+        head = "One reference image is attached. Follow it according to this role:"
+    else:
+        head = f"{n} reference images are attached, in order. Follow each one according to its role:"
+    lines = [head]
+    for k, it in enumerate(items, start=1):
+        role = (it.get("role") or "style").strip()
+        if role not in REF_ROLE_LABEL:
+            role = "style"
+        who = f"panel {k}" if mode == "composite" else f"image {k}"
+        lines.append(f"{k}. {REF_ROLE_LABEL[role]} - {who.capitalize()}: "
+                     f"{_role_instruction(role, who, it.get('note'))}.")
+    lines.append("Do NOT copy any text, logo or watermark from the reference images.")
+    return "\n".join(lines)
+
+
+def _compose_contact_sheet(paths, cell_max=1024, pad=10):
+    """把多张参考图拼成一张带编号角标的 contact sheet（L2 降级用），返回 PNG 字节。"""
+    imgs = []
+    for p in paths:
+        try:
+            im = Image.open(p)
+            im.load()
+            if im.mode == "RGBA":
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                bg.paste(im, mask=im.split()[-1])
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            imgs.append(im.copy())
+        except Exception:  # noqa: BLE001
+            continue
+    if not imgs:
+        raise RuntimeError("没有可用的参考图")
+    n = len(imgs)
+    cols = 1 if n == 1 else (2 if n <= 4 else 3)
+    rows = (n + cols - 1) // cols
+    cell_w = min(max(im.width for im in imgs), cell_max)
+    cell_h = min(max(im.height for im in imgs), cell_max)
+    sheet = Image.new("RGB", (cols * cell_w + (cols + 1) * pad, rows * cell_h + (rows + 1) * pad),
+                      (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    try:
+        font = ImageFont.load_default()
+    except Exception:  # noqa: BLE001
+        font = None
+    for i, im in enumerate(imgs):
+        r, c = divmod(i, cols)
+        sc = min(cell_w / max(1, im.width), cell_h / max(1, im.height))
+        w, h = max(1, int(im.width * sc)), max(1, int(im.height * sc))
+        thumb = im.resize((w, h), _RESAMPLE)
+        x = pad + c * (cell_w + pad) + (cell_w - w) // 2
+        y = pad + r * (cell_h + pad) + (cell_h - h) // 2
+        sheet.paste(thumb, (x, y))
+        bx, by = x + w - 26, y + h - 26
+        draw.rectangle([bx, by, bx + 20, by + 20], fill=(255, 255, 255), outline=(120, 120, 120))
+        if font:
+            draw.text((bx + 6, by + 4), str(i + 1), fill=(40, 40, 40), font=font)
+    buf = io.BytesIO()
+    sheet.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ---- 参考图元数据索引（masters/refs_index.json）----
+def _refs_index_path(mas_dir):
+    return os.path.join(mas_dir, REF_INDEX_NAME)
+
+
+def _load_refs_index(mas_dir):
+    try:
+        with open(_refs_index_path(mas_dir), "r", encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, dict) and isinstance(d.get("items"), dict):
+            return d
+    except Exception:  # noqa: BLE001
+        pass
+    return {"schemaVersion": 1, "items": {}}
+
+
+def _save_refs_index(mas_dir, data):
+    try:
+        with open(_refs_index_path(mas_dir), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ---- 中转站多图能力探测（结果按 base_url 缓存）----
+_CAPABILITY_CACHE = {}
+_CAPABILITY_FILE = os.path.join(OUTPUT_DIR, ".edit_capability.json")
+
+
+def _load_capability():
+    global _CAPABILITY_CACHE
+    if _CAPABILITY_CACHE:
+        return _CAPABILITY_CACHE
+    try:
+        with open(_CAPABILITY_FILE, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            _CAPABILITY_CACHE = d
+    except Exception:  # noqa: BLE001
+        _CAPABILITY_CACHE = {}
+    return _CAPABILITY_CACHE
+
+
+def _save_capability():
+    try:
+        with open(_CAPABILITY_FILE, "w", encoding="utf-8") as f:
+            json.dump(_CAPABILITY_CACHE, f, ensure_ascii=False, indent=2)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _tiny_png(rgb, size=96):
+    buf = io.BytesIO()
+    Image.new("RGB", (size, size), rgb).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _probe_edit_capability(key, base_url, model, skip_proxy=False):
+    """真实发一次极小的 edits 请求，判断中转站支持哪种多图传参方式。
+
+    命中顺序：image[] 重复 → image 重复 → 均不通则视为仅支持单图。
+    注意：部分中转站会「静默丢弃」第二张图，探测无法覆盖这种情况。
+    """
+    headers = {"Authorization": f"Bearer {key}"}
+    proxies = _proxy_cfg(skip_proxy)
+    a, b = _tiny_png((220, 60, 60)), _tiny_png((60, 90, 220))
+    reachable = False
+    last_err = ""
+    for kind, field in (("native_multi_array", "image[]"), ("native_multi_repeat", "image")):
+        files = [(field, ("p1.png", a, "image/png")), (field, ("p2.png", b, "image/png"))]
+        data = {"model": model, "prompt": ".", "size": "1024x1024", "quality": "low", "n": 1}
+        for url in _candidate_urls_edits(base_url):
+            try:
+                r = requests.post(url, headers=headers, files=files, data=data,
+                                  timeout=180, proxies=proxies)
+            except Exception as e:  # noqa: BLE001
+                last_err = str(e)
+                continue
+            if r.status_code in (401, 403):
+                return {"ok": False, "error": f"鉴权失败（HTTP {r.status_code}）：{r.text[:200]}"}
+            if r.status_code == 404:
+                continue
+            reachable = True
+            if r.status_code < 400:
+                return {"ok": True, "mode": kind, "max_images": HARD_REF_LIMIT,
+                        "probed_at": int(time.time())}
+            last_err = f"HTTP {r.status_code}：{r.text[:200]}"
+    return {"ok": True, "mode": ("single_only" if reachable else "unknown"), "max_images": 1,
+            "probed_at": int(time.time()), "note": last_err}
+
+
 # 锁长相 / 锁风格指令：edits 端点把参考图作为强条件，约束后续出图
 _LOCK_FACE = "Keep every character's face, hairstyle and clothing identical to the reference image."
 _LOCK_STYLE = (
@@ -488,59 +699,150 @@ _LOCK_STYLE = (
 )
 
 
-def _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy=False, lock_scope="style", images_dir=None, project_name=None):
-    """edits 端点：传参考图锁长相 / 锁整体风格。
+def _post_edit_once(headers, proxies, base_url, files, data, skip_proxy=False):
+    """发一次 edits 请求，返回 (kind, value)。
 
-    lock_scope:
-      "style" —— 锁定整页视觉风格（配色/背景/字体/装饰/版式）+ 人物（默认，用于统一整批课件风格）
-      "face"  —— 仅锁定人物长相、发型、服装
-    project_name 指定当前项目子文件夹；edits 生成的页面图落到其下，与母版/参考图无关。
+    kind: ok（value=图片字节）/ auth / proxy / network / notfound / err（value=错误文案）。
+    网络类失败不再重试其它传参方案，避免把一次超时放大成多次超时。
+    """
+    last = "未知错误"
+    for url in _candidate_urls_edits(base_url):
+        try:
+            r = requests.post(url, headers=headers, files=files, data=data,
+                              timeout=300, proxies=proxies)
+        except requests.exceptions.ProxyError as e:
+            return "proxy", ("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
+                             "请在「① API 设置」勾选「跳过系统代理（直连）」后重试。详情：" + str(e))
+        except requests.exceptions.RequestException as e:
+            return "network", f"网络请求失败：{e}"
+        if r.status_code in (401, 403):
+            return "auth", f"鉴权失败（HTTP {r.status_code}）：{r.text[:300]}。请检查 Key 或 API 地址"
+        if r.status_code == 404:
+            last = f"HTTP 404：{r.text[:200]}（edits 路径不存在，该中转站可能不支持参考图）"
+            continue
+        if r.status_code >= 400:
+            # 400/422 通常意味着传参方式不被接受，交给外层换一种方案重试
+            return "err", f"HTTP {r.status_code}：{r.text[:300]}"
+        try:
+            payload = r.json()
+        except Exception:  # noqa: BLE001
+            last = "接口返回非 JSON，无法解析图片"
+            continue
+        item = (payload.get("data") or [{}])[0]
+        img_bytes = None
+        if item.get("b64_json"):
+            img_bytes = base64.b64decode(item["b64_json"])
+        elif item.get("url"):
+            try:
+                img_bytes = _download_image(item["url"], headers, skip_proxy)
+            except Exception as e:  # noqa: BLE001
+                last = f"下载结果图失败：{e}"
+                continue
+        if not img_bytes:
+            last = "接口返回里既没有 b64_json 也没有 url"
+            continue
+        return "ok", img_bytes
+    return "err", last
+
+
+def _gen_edit(key, base_url, model, prompt, size, index, ref_items, skip_proxy=False,
+              lock_scope="style", images_dir=None, project_name=None, input_fidelity="auto"):
+    """edits 端点：多参考图 + 角色绑定 + 自动降级。
+
+    降级顺序（每级失败自动落到下一级，回传 mode/degraded 供前端提示）：
+      L1 native_multi_array   —— 重复 image[] 字段（GPT Image 原生多图）
+      L1 native_multi_repeat  —— 重复 image 字段（兼容只认单名字段的中转站）
+      L2 composite_single     —— 多图拼成 contact sheet 当单图发
+      L3 single_primary       —— 只发优先级最高的一张（风格 > 人物 > 版式 > 素材）
+    input_fidelity: auto / high / low；auto 时仅当存在风格或人物参考图才用 high。
     """
     headers = {"Authorization": f"Bearer {key}"}
     proxies = _proxy_cfg(skip_proxy)
-    with open(ref_path, "rb") as f:
-        ref_bytes = f.read()
-    ext = os.path.splitext(ref_path)[1].lower().lstrip(".")
-    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(ext, "image/png")
-    files = {"image": (os.path.basename(ref_path), ref_bytes, mime)}
-    lock = _LOCK_STYLE if lock_scope != "face" else _LOCK_FACE
-    data = {"model": model, "prompt": prompt + " " + lock, "size": size}
 
-    last_err = None
-    for url in _candidate_urls_edits(base_url):
+    resolved = []
+    for it in (ref_items or []):
+        path = _find_image((it or {}).get("filename") or "")
+        if not path:
+            continue
         try:
-            r = requests.post(url, headers=headers, files=files, data=data, timeout=300, proxies=proxies)
-            if r.status_code in (401, 403):
-                return _err(f"鉴权失败（HTTP {r.status_code}）：{r.text[:300]}。请检查 Key 或 API 地址")
-            if r.status_code == 404:
-                last_err = f"HTTP 404：{r.text[:200]}（edits 路径不存在，该中转站可能不支持参考图）"
-                break
-            if r.status_code >= 400:
-                last_err = f"HTTP {r.status_code}：{r.text[:300]}"
-                continue
-            payload = r.json()
-            item = (payload.get("data") or [{}])[0]
-            img_bytes = None
-            if item.get("b64_json"):
-                img_bytes = base64.b64decode(item["b64_json"])
-            elif item.get("url"):
-                img_bytes = _download_image(item["url"], headers, skip_proxy)
-            if not img_bytes:
-                last_err = "接口返回里既没有 b64_json 也没有 url"
-                continue
-            img_dir, _ = _save_dirs(images_dir, project_name)
-            fname = _save_image(img_bytes, index, target_dir=img_dir)
-            return _ok({"filename": fname, "url": _image_url(fname)})
-        except requests.exceptions.ProxyError as e:
-            return _err("代理连接失败（ProxyError）：当前系统/网络设置了代理，但代理无法连通目标服务器。"
-                        "请在「① API 设置」勾选「跳过系统代理（直连）」后重试。详情：" + str(e))
-        except requests.exceptions.RequestException as e:
-            last_err = f"网络请求失败：{e}"
-            continue
-        except Exception as e:  # noqa: BLE001
-            last_err = f"图片生成失败：{e}"
-            continue
+            w = int((it or {}).get("weight") or 3)
+        except (TypeError, ValueError):
+            w = 3
+        role = ((it or {}).get("role") or "style").strip() or "style"
+        if role not in REF_ROLE_LABEL:
+            role = "style"
+        resolved.append({"path": path, "role": role, "note": (it or {}).get("note") or "",
+                         "weight": max(1, min(5, w))})
+    if not resolved:
+        return _err("参考图不存在，请重新上传或移除后再生成")
+
+    resolved = resolved[:HARD_REF_LIMIT]
+    # 编号稳定化：按「角色优先级 + 权重」排序后固定，禁用项已在入参侧剔除
+    resolved.sort(key=lambda r: (REF_ROLE_ORDER.get(r["role"], 9), -r["weight"]))
+
+    lock = _LOCK_FACE if lock_scope == "face" else _LOCK_STYLE
+    if input_fidelity == "low":
+        want_fidelity = False
+    elif input_fidelity == "high":
+        want_fidelity = True
+    else:
+        want_fidelity = any(r["role"] in ("character", "style") for r in resolved)
+
+    def part_of(path):
+        with open(path, "rb") as f:
+            b = f.read()
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "webp": "image/webp"}.get(ext, "image/png")
+        return os.path.basename(path), mime, b
+
+    attempts = []
+    if len(resolved) > 1:
+        multi = [part_of(r["path"]) for r in resolved]
+        manifest_multi = build_ref_manifest(resolved, "multi")
+        attempts.append(("native_multi_array", "image[]", multi, manifest_multi))
+        attempts.append(("native_multi_repeat", "image", multi, manifest_multi))
+        try:
+            sheet = _compose_contact_sheet([r["path"] for r in resolved])
+            attempts.append(("composite_single", "image",
+                             [("reference_contact_sheet.png", "image/png", sheet)],
+                             build_ref_manifest(resolved, "composite")))
+        except Exception:  # noqa: BLE001
+            pass
+    attempts.append(("single_primary", "image", [part_of(resolved[0]["path"])],
+                     build_ref_manifest(resolved[:1], "multi")))
+
+    last_err = "未知错误"
+    for mode_label, field, parts, manifest in attempts:
+        files = [(field, (fn, b, mime)) for (fn, mime, b) in parts]
+        for use_fidelity in ([True, False] if want_fidelity else [False]):
+            data = {"model": model,
+                    "prompt": manifest + "\n\n" + prompt + " " + lock,
+                    "size": size}
+            if use_fidelity:
+                data["input_fidelity"] = "high"
+            kind, value = _post_edit_once(headers, proxies, base_url, files, data, skip_proxy)
+            if kind == "ok":
+                img_dir, _ = _save_dirs(images_dir, project_name)
+                fname = _save_image(value, index, target_dir=img_dir)
+                used = len(resolved) if mode_label != "composite_single" else len(resolved)
+                return _ok({
+                    "filename": fname,
+                    "url": _image_url(fname),
+                    "mode": mode_label,
+                    "ref_used": used,
+                    "ref_total": len(resolved),
+                    "degraded": mode_label not in ("native_multi_array", "native_multi_repeat"),
+                    "input_fidelity": "high" if use_fidelity else "low",
+                })
+            if kind in ("auth", "proxy", "network"):
+                return _err(value)
+            last_err = value
+            if "input_fidelity" in (value or ""):
+                continue  # 换用不带 input_fidelity 的重试
+            break         # 该方案整体不可用，落到下一个方案
     return _err(f"图片生成失败：{last_err}")
+
 
 
 # ---------------------------------------------------------------------------
@@ -732,29 +1034,159 @@ def split_content():
 
 
 # ---------------------------------------------------------------------------
-# 设定图上传
+# 参考图上传 / 图库 / 删除 / 能力探测
 # ---------------------------------------------------------------------------
 @app.route("/api/upload_ref", methods=["POST"])
 def upload_ref():
-    f = request.files.get("file")
-    if not f:
+    """上传 1~N 张参考图（风格母版 / 人物 / 版式 / 素材）。
+
+    兼容两种字段：files（可重复，多张）与 file（单张，旧调用）。
+    落盘到 <images_dir>/masters/，并把角色/权重元数据写入 refs_index.json。
+    """
+    files = [f for f in (request.files.getlist("files") or []) if f and f.filename]
+    if not files:
+        single = request.files.get("file")
+        if single and single.filename:
+            files = [single]
+    if not files:
         return _err("未收到文件")
-    ext = os.path.splitext(f.filename or "")[1].lower()
-    if ext not in (".png", ".jpg", ".jpeg", ".webp"):
-        return _err("请上传 png / jpg / webp 图片")
-    data = f.read()
-    if not data:
-        return _err("文件为空")
+
     images_dir = (request.form.get("images_dir") or "").strip() or None
     _remember_images_dir(images_dir)
-    e = ext.lstrip(".")
-    if e == "jpeg":
-        e = "jpg"
-    fname = f"ref_{int(time.time() * 1000)}.{e}"
     _, mas_dir = _save_dirs(images_dir)
-    with open(os.path.join(mas_dir, fname), "wb") as out:
-        out.write(data)
-    return _ok({"filename": fname, "url": _image_url(fname)})
+    index = _load_refs_index(mas_dir)
+    index.setdefault("items", {})
+
+    items, skipped = [], []
+    idx = 1
+    for f in files:
+        raw_name = os.path.basename(f.filename or "")
+        ext = os.path.splitext(raw_name)[1].lower()
+        if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+            skipped.append({"name": raw_name, "reason": "仅支持 png / jpg / webp"})
+            continue
+        data = f.read()
+        if not data:
+            skipped.append({"name": raw_name, "reason": "文件为空"})
+            continue
+        if len(data) > 10 * 1024 * 1024:
+            skipped.append({"name": raw_name, "reason": "超过 10MB 限制"})
+            continue
+        digest = hashlib.sha1(data).hexdigest()
+        dup = next((k for k, v in index["items"].items()
+                    if isinstance(v, dict) and v.get("sha1") == digest
+                    and os.path.isfile(os.path.join(mas_dir, k))), None)
+        if dup:
+            items.append({"filename": dup, "url": _image_url(dup), "size": len(data),
+                          "sha1": digest, "duplicated": True})
+            continue
+        e = "jpg" if ext.lstrip(".") == "jpeg" else ext.lstrip(".")
+        base_fname = f"ref_{int(time.time() * 1000)}_{idx}"
+        fname = f"{base_fname}.{e}"
+        n = 2
+        while os.path.exists(os.path.join(mas_dir, fname)):
+            fname = f"{base_fname}_{n}.{e}"
+            n += 1
+        with open(os.path.join(mas_dir, fname), "wb") as out:
+            out.write(data)
+        index["items"][fname] = {"role": "style", "weight": 5, "note": "",
+                                 "sha1": digest, "addedAt": int(time.time() * 1000)}
+        items.append({"filename": fname, "url": _image_url(fname), "size": len(data),
+                      "sha1": digest, "duplicated": False})
+        idx += 1
+    _save_refs_index(mas_dir, index)
+
+    if not items:
+        return _err(skipped[0]["reason"] if skipped else "没有可用的图片")
+    # ref_image / ref_url 为旧前端的兼容字段，指向本次第一张
+    return _ok({"items": items, "skipped": skipped,
+                "ref_image": items[0]["filename"], "ref_url": items[0]["url"]})
+
+
+@app.route("/api/list_refs", methods=["GET"])
+def list_refs():
+    """列出参考图库：masters 目录磁盘扫描 ∪ refs_index.json 元数据。"""
+    images_dir = (request.args.get("images_dir") or "").strip()
+    _remember_images_dir(images_dir)
+    _, mas_dir = _save_dirs(images_dir)
+    index = _load_refs_index(mas_dir)
+    meta = index.get("items") if isinstance(index.get("items"), dict) else {}
+    items = []
+    if os.path.isdir(mas_dir):
+        for name in sorted(os.listdir(mas_dir)):
+            if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+                continue
+            full = os.path.join(mas_dir, name)
+            if not os.path.isfile(full):
+                continue
+            m = meta.get(name) or {}
+            try:
+                st = os.stat(full)
+                size, mtime = st.st_size, int(st.st_mtime * 1000)
+            except OSError:
+                size, mtime = 0, 0
+            items.append({"filename": name, "url": _image_url(name), "size": size, "mtime": mtime,
+                          "role": m.get("role") or "style", "weight": m.get("weight") or 5,
+                          "note": m.get("note") or ""})
+    items.sort(key=lambda x: x.get("mtime") or 0, reverse=True)
+    return _ok({"items": items, "max_images": MAX_REF_IMAGES, "hard_limit": HARD_REF_LIMIT})
+
+
+@app.route("/api/delete_ref", methods=["POST"])
+def delete_ref():
+    """删除 masters 目录内的一张参考图（含索引条目），不触碰页面图。"""
+    data = request.get_json(force=True, silent=True) or {}
+    name = _validate_filename(data.get("filename") or "")
+    if not name:
+        return _err("缺少文件名")
+    images_dir = (data.get("images_dir") or "").strip() or None
+    _remember_images_dir(images_dir)
+    _, mas_dir = _save_dirs(images_dir)
+    target = os.path.abspath(os.path.join(mas_dir, name))
+    if os.path.dirname(target) != os.path.abspath(mas_dir):
+        return _err("拒绝访问：只能删除 masters 目录内的参考图", 403)
+    if not os.path.isfile(target):
+        return _err("文件不存在", 404)
+    try:
+        os.remove(target)
+    except OSError as e:
+        return _err(f"删除失败：{e}")
+    index = _load_refs_index(mas_dir)
+    if isinstance(index.get("items"), dict) and name in index["items"]:
+        index["items"].pop(name, None)
+        _save_refs_index(mas_dir, index)
+    return _ok({"filename": name})
+
+
+@app.route("/api/probe_edit_capability", methods=["POST"])
+def probe_edit_capability_route():
+    """探测中转站的 edits 端点支持哪种多图传参方式（结果按 base_url 缓存）。"""
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("openai_key") or "").strip()
+    base_url = (data.get("openai_base_url") or "").strip().rstrip("/")
+    model = (data.get("openai_model") or data.get("model") or "gpt-image-2").strip()
+    skip_proxy = data.get("skip_proxy") or False
+
+    if not key:
+        return _err("请先填写 OpenAI API Key")
+    if not base_url:
+        return _err("请先填写 OpenAI API 地址")
+
+    cache = _load_capability()
+    cached = cache.get(base_url)
+    if cached and not data.get("force"):
+        return _ok({"mode": cached.get("mode"), "max_images": cached.get("max_images"),
+                    "probed_at": cached.get("probed_at"), "cached": True})
+
+    res = _probe_edit_capability(key, base_url, model, skip_proxy)
+    if not res.get("ok"):
+        return _err(res.get("error") or "探测失败")
+    cache[base_url] = {"mode": res.get("mode"), "max_images": res.get("max_images"),
+                       "probed_at": res.get("probed_at")}
+    _save_capability()
+    res["cached"] = False
+    return _ok(res)
+
 
 
 # ---------------------------------------------------------------------------
@@ -958,7 +1390,9 @@ def generate():
     fmt = data.get("format") or "png"
     index = data.get("index") or 0
     ref_image = (data.get("ref_image") or "").strip()
+    ref_images = data.get("ref_images") or []
     lock_scope = (data.get("lock_scope") or "style").strip()
+    input_fidelity = (data.get("input_fidelity") or "auto").strip()
     skip_proxy = data.get("skip_proxy") or False
     images_dir = (data.get("images_dir") or "").strip() or None
     project_name = (data.get("project_name") or "").strip() or None
@@ -973,11 +1407,26 @@ def generate():
     if not prompt:
         return _err("提示词不能为空")
 
-    if ref_image:
-        ref_path = _find_image(ref_image)  # 跨目录定位：自定义目录 > 默认目录
-        if not ref_path:
-            return _err("风格母版不存在，请重新上传")
-        return _gen_edit(key, base_url, model, prompt, size, index, ref_path, skip_proxy, lock_scope, images_dir, project_name)
+    # 组装有序参考图集：新字段 ref_images 优先；旧字段 ref_image 兜底包装成一张
+    ref_items = []
+    if isinstance(ref_images, list):
+        for it in ref_images:
+            if isinstance(it, str):
+                if it.strip():
+                    ref_items.append({"filename": it.strip(), "role": "style", "weight": 5})
+            elif isinstance(it, dict) and (it.get("filename") or "").strip():
+                ref_items.append({"filename": it["filename"].strip(),
+                                  "role": (it.get("role") or "style").strip() or "style",
+                                  "weight": it.get("weight") or 5,
+                                  "note": it.get("note") or ""})
+    if not ref_items and ref_image:
+        ref_items.append({"filename": ref_image,
+                          "role": "character" if lock_scope == "face" else "style",
+                          "weight": 5})
+
+    if ref_items:
+        return _gen_edit(key, base_url, model, prompt, size, index, ref_items, skip_proxy,
+                         lock_scope, images_dir, project_name, input_fidelity)
 
     return _gen_text2img(key, base_url, model, prompt, size, quality, fmt, index, skip_proxy, images_dir=images_dir, project_name=project_name)
 
