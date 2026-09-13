@@ -2010,14 +2010,31 @@ async function retryFailed() {
   toast(finalMsg + (badCount ? '，可再次点击重试' : ''));
 }
 
+// 取「首页主标题」作为 PPTX 文件名：
+// 优先第一页的标题，为空时从该页描述的「标题：」里兜底。
+// 先在有图的页面里找（有图的才是真正进了 PPT 的首页），找不到再退到其余页面。
+function deckTitle() {
+  const withImg = state.pages.filter((p) => p.imageFile);
+  const rest = state.pages.filter((p) => !p.imageFile);
+  for (const p of withImg.concat(rest)) {
+    let t = (p.title || '').trim();
+    if (!t) {
+      const m = /标题[：:]\s*([^\n]+)/.exec(p.description || '');
+      if (m) t = m[1].trim();
+    }
+    if (t) return t;
+  }
+  return '演示文稿';
+}
+
 async function buildPpt() {
   syncInputs();
   const images = state.pages.filter((p) => p.imageFile).map((p) => p.imageFile);
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/build_ppt', { images, title: '演示文稿', output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
-    showResult([{ label: '下载 PPTX', url: data.url, cls: '' }]);
+    const data = await postJson('/api/build_ppt', { images, title: deckTitle(), output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
+    showResult([{ label: '下载 PPTX', url: data.url, cls: '', name: data.filename }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? 'PPT 已生成：' + data.abs_path : 'PPT 已生成');
   } catch (e) {
@@ -2031,8 +2048,8 @@ async function zipImages() {
   if (!images.length) { toast('还没有生成任何图片', true); return; }
   const outputDir = $('output_dir').value.trim();
   try {
-    const data = await postJson('/api/zip_images', { images, output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
-    showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip' }]);
+    const data = await postJson('/api/zip_images', { images, title: deckTitle(), output_dir: outputDir, images_dir: $('images_dir').value.trim(), project_name: state.projectName });
+    showResult([{ label: '下载图片 ZIP', url: data.url, cls: 'zip', name: data.filename }]);
     showResultPath(data.abs_path);
     toast(data.abs_path ? '图片已打包：' + data.abs_path : '图片已打包');
   } catch (e) {
@@ -2048,8 +2065,10 @@ function showResultPath(absPath) {
 
 function showResult(links) {
   const box = $('resultLinks');
+  // 显式指定 download 文件名，确保两种下载 URL（/output/<name> 与 /api/download?path=…）
+  // 落到本地时都叫「首页主标题.pptx」
   box.innerHTML = links.map((l) =>
-    `<a class="${l.cls}" href="${l.url}" download>${l.label}</a>`).join('');
+    `<a class="${l.cls}" href="${l.url}"${l.name ? ` download="${escapeHtml(l.name)}"` : ' download'}>${l.label}</a>`).join('');
 }
 
 // ⑤ 下载提示词（打包为单个 Markdown 文件）

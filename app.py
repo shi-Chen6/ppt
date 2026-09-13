@@ -184,6 +184,33 @@ def _make_project_name_unique(parent_dir, base_name):
     return candidate
 
 
+def _sanitize_deck_title(title, fallback="演示文稿", maxlen=60):
+    """清洗 PPT 文件名用的标题。
+
+    标题来自「首页主标题」（前端取第一页有图的页面标题），可能含标点 / 换行 /
+    超长内容，必须先清洗再拼文件名，否则写盘会失败或产生怪异路径。
+    """
+    s = (title or "").strip()
+    for ch in '\\/:*?"<>|':
+        s = s.replace(ch, "")
+    s = " ".join(s.split())      # 折叠换行 / 制表符 / 连续空格
+    s = s.strip(" ._")           # 去掉首尾的点与下划线（Windows 不允许结尾为点）
+    if len(s) > maxlen:
+        s = s[:maxlen].strip(" ._")
+    return s or fallback
+
+
+def _make_file_unique(path):
+    """目标文件已存在时追加 (2) / (3)… 直到不重名，避免覆盖历史产物。"""
+    if not os.path.exists(path):
+        return path
+    stem, ext = os.path.splitext(path)
+    n = 2
+    while os.path.exists(f"{stem}({n}){ext}"):
+        n += 1
+    return f"{stem}({n}){ext}"
+
+
 def _remember_project(project_name):
     """记录当前活跃项目子文件夹；空值清除。同时加入历史列表用于跨项目查找。"""
     global CURRENT_PROJECT_NAME
@@ -1438,7 +1465,8 @@ def generate():
 def build_ppt():
     data = request.get_json(force=True, silent=True) or {}
     images = data.get("images") or []
-    title = (data.get("title") or "演示文稿").strip() or "演示文稿"
+    # 文件以「首页主标题」命名（前端已把首页标题作为 title 传入）
+    title = _sanitize_deck_title(data.get("title"))
     output_dir = (data.get("output_dir") or "").strip()
     images_dir = (data.get("images_dir") or "").strip() or None
     project_name = (data.get("project_name") or "").strip() or None
@@ -1461,13 +1489,14 @@ def build_ppt():
         slide = prs.slides.add_slide(blank)
         slide.shapes.add_picture(fpath, 0, 0, width=prs.slide_width, height=prs.slide_height)
 
-    deck_name = f"{title}_{int(time.time() * 1000)}.pptx"
+    deck_name = f"{title}.pptx"
     save_dir = output_dir if output_dir else OUTPUT_DIR
     try:
         os.makedirs(save_dir, exist_ok=True)
     except Exception as e:
         return _err(f"输出目录创建失败：{e}")
-    deck_path = os.path.join(save_dir, deck_name)
+    deck_path = _make_file_unique(os.path.join(save_dir, deck_name))
+    deck_name = os.path.basename(deck_path)
     prs.save(deck_path)
     if os.path.abspath(save_dir) == os.path.abspath(OUTPUT_DIR):
         url = f"/output/{deck_name}"
@@ -1483,6 +1512,8 @@ def build_ppt():
 def zip_images():
     data = request.get_json(force=True, silent=True) or {}
     images = data.get("images") or []
+    # 与 PPTX 同源：以「首页主标题」命名（前端传 deckTitle()）
+    title = _sanitize_deck_title(data.get("title"))
     output_dir = (data.get("output_dir") or "").strip()
     images_dir = (data.get("images_dir") or "").strip() or None
     project_name = (data.get("project_name") or "").strip() or None
@@ -1492,13 +1523,14 @@ def zip_images():
     if not images:
         return _err("还没有生成任何图片")
 
-    zname = f"images_{int(time.time() * 1000)}.zip"
+    zname = f"{title}.zip"
     save_dir = output_dir if output_dir else OUTPUT_DIR
     try:
         os.makedirs(save_dir, exist_ok=True)
     except Exception as e:
         return _err(f"输出目录创建失败：{e}")
-    zpath = os.path.join(save_dir, zname)
+    zpath = _make_file_unique(os.path.join(save_dir, zname))
+    zname = os.path.basename(zpath)
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
         for fn in images:
             safe = _validate_filename(fn)
