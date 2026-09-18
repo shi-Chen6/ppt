@@ -72,7 +72,7 @@ def stage_resources():
     download(GETPIP_URL, getpip)
     shutil.copyfile(embed, os.path.join(STAGE, "python_embed.zip"))
     shutil.copyfile(getpip, os.path.join(STAGE, "get-pip.py"))
-    for name in ("app.py", "requirements.txt", "bootstrap.py"):
+    for name in ("app.py", "chart_renderer.py", "requirements.txt", "bootstrap.py"):
         shutil.copyfile(os.path.join(HERE, name), os.path.join(STAGE, name))
     # 覆盖式复制，不删除旧目录（避免受限环境下删除失败；PyInstaller 会整体重新收集）
     shutil.copytree(os.path.join(HERE, "static"), os.path.join(STAGE, "static"),
@@ -104,6 +104,7 @@ def run_pyinstaller(py):
         "--add-data", os.path.join(STAGE, "python_embed.zip") + sep + ".",
         "--add-data", os.path.join(STAGE, "get-pip.py") + sep + ".",
         "--add-data", os.path.join(STAGE, "app.py") + sep + ".",
+        "--add-data", os.path.join(STAGE, "chart_renderer.py") + sep + ".",
         "--add-data", os.path.join(STAGE, "requirements.txt") + sep + ".",
         "--add-data", os.path.join(STAGE, "static") + sep + "static",
         os.path.join(HERE, "bootstrap.py"),

@@ -489,18 +489,234 @@
     accent-color: var(--primary);
     width: 16px; height: 16px; cursor: pointer;
   }
+
+  /* ================= 工作台布局 ================= */
+  html, body { height: 100%; }
+  body { overflow: hidden; }
+  .wb { display: flex; flex-direction: column; height: 100vh; }
+
+  /* 顶栏 */
+  .wb-top {
+    flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-md);
+    padding: 10px 18px; color: #fff;
+    background: var(--grad-primary);
+    box-shadow: var(--shadow-md), 0 0 0 1px rgba(255,255,255,.08) inset;
+    z-index: 20;
+  }
+  .wb-brand { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+  .wb-logo {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(255,255,255,.20); border: 1px solid rgba(255,255,255,.35);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; letter-spacing: .5px;
+  }
+  .wb-title { font-size: 15px; font-weight: 800; line-height: 1.2; }
+  .wb-sub { font-size: 11.5px; color: rgba(255,255,255,.85); line-height: 1.3; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .wb-top-actions select { width: auto; min-width: 130px; padding: 6px 10px; font-size: 13px; border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.92); }
+  .wb-top-actions button { padding: 7px 14px; font-size: 13px; }
+  .wb-top-actions button.ghost { color: #fff; border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.14); }
+  .wb-top-actions button.ghost:hover { background: rgba(255,255,255,.26); color: #fff; }
+  .wb-divider { width: 1px; height: 24px; background: rgba(255,255,255,.30); }
+  .wb-author { font-size: 11.5px; color: rgba(255,255,255,.85); white-space: nowrap; }
+
+  /* 主体三栏 */
+  .wb-body { flex: 1; display: flex; min-height: 0; }
+
+  .wb-nav {
+    flex: 0 0 88px; width: 88px;
+    background: var(--card); border-right: 1px solid var(--border);
+    padding: 10px 6px; display: flex; flex-direction: column; gap: 4px;
+    overflow-y: auto; z-index: 10;
+  }
+  .wb-nav-item {
+    border: none; background: transparent; border-radius: var(--radius-sm);
+    padding: 9px 4px; font-size: 12.5px; font-weight: 600; color: var(--text-soft);
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    box-shadow: none; white-space: nowrap; line-height: 1.3;
+  }
+  .wb-nav-item:hover { background: var(--card-tint); color: var(--primary); transform: none; box-shadow: none; }
+  .wb-nav-item.active { background: var(--grad-primary-soft); color: var(--primary-600); box-shadow: inset 2px 0 0 var(--primary); }
+  .wb-nav-item .ni-ico { font-size: 16px; line-height: 1; }
+
+  .wb-panel {
+    flex: 0 0 340px; width: 340px;
+    background: var(--bg-soft); border-right: 1px solid var(--border);
+    overflow-y: auto; display: none; z-index: 9;
+  }
+  .wb-panel.show { display: block; }
+  .pn { display: none; padding: 14px; }
+  .pn.on { display: block; }
+  .pn .card {
+    margin-bottom: 0; box-shadow: none; border: none;
+    background: transparent; padding: 0;
+  }
+  .pn .card h2 {
+    font-size: 14px; margin-bottom: 10px; padding-bottom: 8px;
+    border-bottom: 1px solid var(--border); gap: 8px;
+  }
+  .pn .card h2 .step-num { width: 22px; height: 22px; font-size: 11.5px; border-radius: 7px; }
+  .pn .grid { grid-template-columns: 1fr; gap: 12px; }
+  .pn .adv-body { padding: 12px; }
+
+  .wb-canvas { flex: 1; min-width: 0; overflow-y: auto; padding: 14px 16px 24px; }
+  .canvas-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 14px; padding: 10px 12px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); box-shadow: var(--shadow-sm);
+    position: sticky; top: 0; z-index: 5;
+  }
+  .canvas-bar .spacer { flex: 1; }
+  .canvas-bar label { margin: 0; display: flex; align-items: center; gap: 5px; font-weight: 500; color: var(--text-soft); }
+  .canvas-bar button { padding: 7px 13px; font-size: 13px; }
+
+  .canvas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+  .tile {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card); padding: 8px; cursor: pointer;
+    box-shadow: var(--shadow-sm); transition: border-color .2s, box-shadow .2s, transform .15s;
+    position: relative;
+  }
+  .tile:hover { border-color: var(--primary-300); box-shadow: var(--shadow-md); }
+  .tile.sel { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(234,88,12,.16); }
+  .tile.dragover { border-color: var(--primary); border-style: dashed; transform: scale(1.02); }
+  .tile.dragging { opacity: .45; }
+  .tile .thumb {
+    aspect-ratio: 16/9; border-radius: var(--radius-xs); overflow: hidden;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 12px; position: relative;
+  }
+  .tile .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .tnum {
+    position: absolute; top: 14px; left: 14px;
+    background: var(--grad-primary); color: #fff; border-radius: 7px;
+    padding: 1px 7px; font-size: 11px; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(234,88,12,.35);
+  }
+  .tile .tpick {
+    position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; z-index: 2;
+  }
+  .tile .tname {
+    font-size: 12.5px; font-weight: 600; margin-top: 8px; line-height: 1.45;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    min-height: 18px; word-break: break-all;
+  }
+  .tile .tmeta { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+  .tile .tmeta .badge { font-size: 11px; padding: 2px 8px; }
+  .tile .tacts { display: flex; gap: 4px; margin-top: 8px; }
+  .tile .tacts button { font-size: 11.5px; padding: 4px 8px; }
+  .canvas-empty {
+    padding: 40px 16px; text-align: center; color: var(--muted); font-size: 13px;
+    border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--card-tint);
+  }
+
+  .wb-inspector {
+    flex: 0 0 330px; width: 330px;
+    background: var(--card); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 14px; z-index: 9;
+  }
+  .insp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .insp-title { font-size: 14px; font-weight: 700; flex: 1; min-width: 120px; }
+  .insp-field { margin-bottom: 12px; }
+  .insp-field label { font-size: 12.5px; margin-bottom: 4px; }
+  .insp-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .insp-actions button { font-size: 13px; padding: 7px 12px; }
+  .insp-empty { color: var(--muted); font-size: 13px; padding: 30px 6px; text-align: center; line-height: 1.8; }
+  .cand-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+  .cand-strip .cand {
+    flex: 0 0 76px; border: 1px solid var(--border); border-radius: var(--radius-xs);
+    padding: 3px; cursor: pointer; background: var(--card-tint);
+  }
+  .cand-strip .cand.on { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(234,88,12,.18); }
+  .cand-strip .cand img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; }
+
+  /* 底栏 */
+  .wb-bottom {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+    padding: 8px 16px; background: var(--card);
+    border-top: 1px solid var(--border); z-index: 20; min-height: 46px;
+  }
+  .wb-bottom .progress-wrap { margin: 0; flex: 1 1 240px; max-width: 420px; }
+  .wb-bottom .progress-text { margin-top: 4px; font-size: 12px; }
+  .pipe-steps { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .pipe-steps .ps {
+    font-size: 11.5px; padding: 2px 9px; border-radius: 20px;
+    border: 1px solid var(--border); color: var(--muted); background: var(--bg-soft); white-space: nowrap;
+  }
+  .pipe-steps .ps.run { background: var(--blue-soft); color: #0369a1; border-color: #bae6fd; }
+  .pipe-steps .ps.ok { background: var(--green-soft); color: #047857; border-color: #a7f3d0; }
+  .pipe-steps .ps.err { background: var(--red-soft); color: #be123c; border-color: #fecdd3; }
+  .log-text {
+    font-size: 12px; color: var(--muted); margin-left: auto; text-align: right;
+    max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* 面板内的 API 配置管理 */
+  .prof-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .prof-list { display: grid; gap: 8px; margin-top: 10px; max-height: 260px; overflow-y: auto; }
+  .prof-item {
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 10px; background: var(--card-tint);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .prof-item.on { border-color: var(--primary); background: var(--grad-primary-soft); }
+  .prof-item .pname { flex: 1; min-width: 110px; font-size: 13px; font-weight: 600; word-break: break-all; }
+  .prof-item .pmeta { font-size: 11.5px; color: var(--muted); width: 100%; word-break: break-all; }
+  .prof-item button { font-size: 12px; padding: 4px 9px; }
+
+  /* 窄屏回落：面板浮层 + 收起检查器 */
+  @media (max-width: 1180px) { .wb-inspector { flex-basis: 290px; width: 290px; } .wb-panel { flex-basis: 310px; width: 310px; } }
+  @media (max-width: 900px) {
+    .wb-body { position: relative; }
+    .wb-panel { position: absolute; left: 88px; top: 0; bottom: 0; box-shadow: var(--shadow-xl); }
+    .wb-inspector { display: none; }
+    .wb-inspector.show { display: block; position: absolute; right: 0; top: 0; bottom: 0; box-shadow: var(--shadow-xl); }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>PPT 智能生成工具 <span class="author"><img src="https://img.meituan.net/content/1287b66686c7dbbbec4fa47fafdd803631203.jpg" alt="CZT">作者：CZT ©2026</span></h1>
-    <p>上传文档 / 粘贴内容 → 生成大纲与文案 → gpt-image-2 生成 16:9 页面 → 拼成 PPTX（支持多张参考图：风格 / 人物 / 版式 / 素材）</p>
+<div class="wb">
+
+  <!-- ===== 顶栏 ===== -->
+  <header class="wb-top">
+    <div class="wb-brand">
+      <span class="wb-logo">PPT</span>
+      <div>
+        <div class="wb-title">PPT 智能工作台</div>
+        <div class="wb-sub" id="topProject">项目：未创建</div>
+      </div>
+    </div>
+    <div class="wb-top-actions">
+      <span style="font-size:12px; opacity:.9;">API</span>
+      <select id="apiProfileSel" onchange="switchApiProfile(this.value)" title="切换 API 配置集"></select>
+      <button type="button" class="ghost" onclick="openApiProfiles()">管理</button>
+      <span class="wb-divider"></span>
+      <button type="button" class="primary" id="runAllBtn" onclick="togglePipeline()">▶ 一键跑通</button>
+      <button type="button" class="success" onclick="buildPpt()">导出 PPTX</button>
+      <span class="wb-divider"></span>
+      <span class="wb-author">作者：CZT ©2026</span>
+    </div>
   </header>
 
-  <!-- ① API 设置 -->
-  <div class="card">
-    <h2><span class="step-num">1</span>API 设置</h2>
+  <div class="wb-body">
+
+    <!-- ===== 侧栏导航 ===== -->
+    <nav class="wb-nav">
+      <button type="button" class="wb-nav-item active" id="navContent" onclick="showPanel('content')"><span class="ni-ico">①</span>内容</button>
+      <button type="button" class="wb-nav-item" id="navAssets" onclick="showPanel('assets')"><span class="ni-ico">②</span>素材</button>
+      <button type="button" class="wb-nav-item" id="navOutput" onclick="showPanel('output')"><span class="ni-ico">③</span>输出</button>
+      <button type="button" class="wb-nav-item" id="navHistory" onclick="showPanel('history')"><span class="ni-ico">④</span>历史</button>
+      <button type="button" class="wb-nav-item" id="navSettings" onclick="showPanel('settings')"><span class="ni-ico">⑤</span>设置</button>
+    </nav>
+
+    <!-- ===== 左侧面板 ===== -->
+    <div class="wb-panel" id="wbPanel">
+
+      <section class="pn" id="pnSettings">
+      <div class="card">
+        <h2><span class="step-num">5</span>API 设置</h2>
     <div class="grid">
       <div>
         <label>OpenAI API 地址（中转站）</label>
@@ -611,16 +827,33 @@
         <div class="hint" style="margin:0;">项目子文件夹命名：<b>YYYYMMDD_项目名</b>，页面图 / 图表落到该子文件夹下（母版仍存上面的 masters）；同日同名追加 _2/_3。A 链（手动逐页）建议先点「＋ 新建项目」；B 链上传文档时会自动创建并回填。</div>
       </div>
     </details>
+    <details class="adv-set" id="apiProfSet">
+      <summary>
+        <span class="adv-title">🔌 API 配置集</span>
+        <span class="adv-sum" id="apiProfSum">可保存多套生图 / DeepSeek 配置并随时切换</span>
+        <span class="adv-arrow">▾</span>
+      </summary>
+      <div class="adv-body">
+        <div class="hint" style="margin:0;">一套配置包含：生图 API 地址 / Key / 模型、DeepSeek 地址 / Key / 模型、图片尺寸与质量。切换后所有生成请求立即用新配置，不用再手动改一遍。</div>
+        <div id="profList" class="prof-list"></div>
+        <div class="prof-row" style="margin-top:10px;">
+          <button type="button" class="primary" onclick="saveCurrentAsProfile()">＋ 把当前填入的保存为新配置</button>
+          <button type="button" onclick="renameActiveProfile()">重命名当前</button>
+          <button type="button" class="danger" onclick="deleteActiveProfile()">删除当前</button>
+        </div>
+      </div>
+    </details>
     <div class="toolbar" style="margin-top:12px;">
       <button type="button" class="primary" onclick="saveSettings()">保存到本机</button>
       <button type="button" onclick="clearSettings()">清空设置</button>
     </div>
     <div class="hint">Key 仅保存在你浏览器本地（localStorage），不会上传到任何第三方服务器。</div>
   </div>
+      </section>
 
-  <!-- 1.5 历史记录 -->
+      <section class="pn" id="pnHistory">
   <div class="card">
-    <h2><span class="step-num">1+</span>历史记录 <small>（最多 20 条，保存在本机浏览器）</small></h2>
+    <h2><span class="step-num">4</span>历史记录 <small>（最多 20 条，保存在本机浏览器）</small></h2>
     <div class="toolbar" style="margin-bottom: 12px;">
       <button type="button" class="primary" onclick="saveHistoryDialog()">💾 保存当前状态为历史记录</button>
       <button type="button" class="ghost" onclick="exportHistory()">⬇ 导出全部（JSON）</button>
@@ -631,10 +864,11 @@
     </div>
     <div id="historyList"></div>
   </div>
+      </section>
 
-  <!-- ② 智能生成：文档 → PPT -->
+      <section class="pn" id="pnContent">
   <div class="card">
-    <h2><span class="step-num">2</span>智能生成（文档 → 大纲 → 文案 → 提示词）</h2>
+    <h2><span class="step-num">1</span>智能生成（文档 → 大纲 → 文案 → 提示词）</h2>
     <div class="grid">
       <div>
         <label>上传文档（Word / TXT / Markdown）</label>
@@ -668,10 +902,11 @@
     </div>
     <div id="docArea"></div>
   </div>
+      </section>
 
-  <!-- ③ 参考图库（多参考图） -->
+      <section class="pn" id="pnAssets">
   <div class="card">
-    <h2><span class="step-num">3</span>参考图库 / 多参考图 <small>（可选，统一整批风格）</small></h2>
+    <h2><span class="step-num">2</span>参考图库 / 多参考图 <small>（可选，统一整批风格）</small></h2>
     <div class="ref-drop" id="refDrop">
       拖拽多张图片到此处，或点击选择（png / jpg / webp，单张 ≤10MB，建议不超过 <b id="refLimit">6</b> 张）
     </div>
@@ -739,30 +974,11 @@
       </div>
     </details>
   </div>
+      </section>
 
-  <!-- ④ 页面内容与生图 -->
+      <section class="pn" id="pnOutput">
   <div class="card">
-    <h2><span class="step-num">4</span>页面内容与生图</h2>
-    <div class="toolbar">
-      <button type="button" class="primary" onclick="addPage()">＋ 手动添加页面</button>
-      <button type="button" onclick="optimizeAll()">一键优化全部提示词</button>
-      <button type="button" onclick="generateAll()">一键生成全部图片</button>
-      <button type="button" onclick="retryFailed()">重新生成失败图片</button>
-      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted);">
-        <input type="checkbox" id="auto_master" style="width:auto;"> 首图自动当母版
-      </label>
-      <div class="spacer"></div>
-    </div>
-    <div id="pages"></div>
-    <div class="progress-wrap" id="progressWrap">
-      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-      <div class="progress-text" id="progressText"></div>
-    </div>
-  </div>
-
-  <!-- ⑤ 输出 -->
-  <div class="card">
-    <h2><span class="step-num">5</span>生成 PPT 并下载</h2>
+    <h2><span class="step-num">3</span>生成 PPT 并下载</h2>
     <div class="toolbar">
       <button type="button" class="success" onclick="buildPpt()">生成 PPTX</button>
       <button type="button" onclick="zipImages()">下载全部图片（ZIP）</button>
@@ -770,11 +986,47 @@
     </div>
     <div class="result-links" id="resultLinks"></div>
     <div id="resultPath" style="font-size:12px; color:var(--muted); margin-top:8px; word-break:break-all;"></div>
-    <div class="hint">PPT 为 16:9 宽屏，每页一张全屏图，图片与幻灯片比例完全一致、无拉伸变形。输出路径可在「① API 设置」中修改。</div>
+    <div class="hint">PPT 为 16:9 宽屏，每页一张全屏图，图片与幻灯片比例完全一致、无拉伸变形。输出路径可在「⑤ 设置」中修改。</div>
   </div>
-</div>
+      </section>
 
-<footer style="text-align:center; padding: 22px 0 30px; color: var(--muted); font-size: 12.5px; letter-spacing: .3px;">©2026 czt · PPT 智能生成工具</footer>
+    </div><!-- /wb-panel -->
+
+    <!-- ===== 中间：页面画布 ===== -->
+    <main class="wb-canvas">
+      <div class="canvas-bar">
+        <button type="button" class="primary" onclick="addPage()">＋ 添加页面</button>
+        <button type="button" onclick="optimizeAll()">优化全部提示词</button>
+        <button type="button" onclick="generateAll()">生成全部图片</button>
+        <button type="button" onclick="retryFailed()">重试失败</button>
+        <span style="width:1px;height:22px;background:var(--border);"></span>
+        <button type="button" onclick="optimizeSelected()">优化选中</button>
+        <button type="button" onclick="generateSelected()">生成选中</button>
+        <button type="button" class="danger" onclick="removeSelected()">删除选中</button>
+        <button type="button" class="ghost" onclick="toggleSelectAll()">全选/全不选</button>
+        <label><input type="checkbox" id="auto_master" style="width:auto;"> 首图当母版</label>
+        <div class="spacer"></div>
+        <span class="hint" style="margin:0;" id="selHint"></span>
+      </div>
+      <div id="pages" class="canvas-grid"></div>
+    </main>
+
+    <!-- ===== 右侧：选中页检查器 ===== -->
+    <aside class="wb-inspector" id="inspector"></aside>
+
+  </div><!-- /wb-body -->
+
+  <!-- ===== 底栏：进度 + 流程步骤 + 日志 ===== -->
+  <footer class="wb-bottom">
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
+    <div class="pipe-steps" id="pipeSteps"></div>
+    <span class="log-text" id="logText"></span>
+  </footer>
+
+</div><!-- /wb -->
 
 <div class="toast" id="toast"></div>
 
@@ -795,7 +1047,17 @@ const state = {
   refMax: 6,          // 建议上限（模型硬顶 16）
   styleCandidates: [],
   projectName: '',    // 当前活跃项目子文件夹名（YYYYMMDD_项目名）；空表示未创建
+
+  // 工作台状态（不进历史快照）
+  currentId: null,    // 检查器当前编辑的页面 id
+  selected: [],       // 画布上勾选的页面 id（批量操作用）
+  dragId: null,       // 正在拖拽的页面 id
+  panel: 'content',   // 左侧面板：content / assets / output / history / settings
+  logs: [],           // 底栏日志（最近若干条）
+  pipeline: { running: false, abort: false, steps: [] },
 };
+const API_PROFILE_KEY = 'ppt_tool_api_profiles_v1';
+const PANEL_KEY = 'ppt_tool_panel';
 
 // 参考图角色：值 → 中文标签（与后端 REF_ROLE_LABEL 对应）
 const REF_ROLES = [
@@ -812,6 +1074,7 @@ const REF_LOCAL_KEY = 'ppt_tool_refs';
 const HARD_REF_LIMIT = 16;
 const ADV_SET_KEY = 'ppt_tool_adv_open';     // 「⚙ 输出与项目设置」折叠状态
 const STYLE_SET_KEY = 'ppt_tool_style_open'; // 「🎨 AI 生成风格母版」折叠状态
+const API_SET_KEY = 'ppt_tool_api_open';     // 「🔌 API 配置集」折叠状态
 
 // 图表类型：精确类走 matplotlib 绘图，示意类走生图
 const PRECISE_CHARTS = ['radar', 'bar', 'pie'];
@@ -904,8 +1167,7 @@ function dsBody(s) {
 }
 
 function saveSettings() {
-  localStorage.setItem('ppt_tool_settings', JSON.stringify(getSettings()));
-  syncImagesDirToServer();
+  saveSettingsQuiet();
   toast('已保存到本机');
 }
 
@@ -923,6 +1185,11 @@ function updateProjectLabel() {
     el.title = state.projectName
       ? '当前项目：' + state.projectName + '（页面图 / 图表将保存到该子文件夹）'
       : '未创建项目：生图时会按当天日期兜底创建子文件夹';
+  }
+  const tp = $('topProject');
+  if (tp) {
+    tp.textContent = state.projectName ? ('项目：' + state.projectName) : '项目：未创建';
+    tp.title = tp.textContent;
   }
   refreshAdvSummary();
 }
@@ -1683,12 +1950,17 @@ function addPage(data) {
     refPick: [],      // 本页专用参考图子集（filename 数组）；空 = 继承全局
   }, data || {});
   state.pages.push(p);
+  if (state.currentId == null) state.currentId = p.id;   // 首页面自动进检查器
   renderPages();
   return p.id;
 }
 
 function removePage(id) {
   state.pages = state.pages.filter((p) => p.id !== id);
+  state.selected = state.selected.filter((x) => x !== id);
+  if (state.currentId === id) {
+    state.currentId = state.pages.length ? state.pages[0].id : null;
+  }
   renderPages();
 }
 
@@ -1700,71 +1972,256 @@ function movePage(id, dir) {
   renderPages();
 }
 
+// 画布拖拽排序：把 fromId 插到 toId 之前
+function reorderPage(fromId, toId) {
+  if (fromId === toId) return;
+  const from = state.pages.findIndex((p) => p.id === fromId);
+  if (from < 0) return;
+  const [item] = state.pages.splice(from, 1);
+  let to = state.pages.findIndex((p) => p.id === toId);
+  if (to < 0) to = state.pages.length;
+  state.pages.splice(to, 0, item);
+  renderPages();
+  toast('已移动到第 ' + (to + 1) + ' 页');
+}
+
+function dragStartPage(id) { state.dragId = id; }
+function dragOverPage(ev) { if (ev && ev.preventDefault) ev.preventDefault(); }
+function dropPage(id) {
+  if (state.dragId != null) reorderPage(state.dragId, id);
+  state.dragId = null;
+}
+
 function getPage(id) { return state.pages.find((p) => p.id === id); }
 
+// 只有检查器里正在编辑的那一页在 DOM 中有输入框；其余页的字段已由 oninput 实时写回 state。
+// 这里只做一次「保险同步」：DOM 里存在且有内容时才回写，避免把 state 冲成空。
 function syncInputs() {
   state.pages.forEach((p) => {
-    p.title = $('title_' + p.id).value;
-    p.description = $('desc_' + p.id).value;
+    const t = $('title_' + p.id);
+    if (t && t.value) p.title = t.value;
+    const d = $('desc_' + p.id);
+    if (d && d.value) p.description = d.value;
     const pb = $('prompt_' + p.id);
-    if (pb) p.prompt = pb.value;
+    if (pb && pb.value) p.prompt = pb.value;
   });
 }
 
+// ---------------- 工作台：画布 + 检查器 ----------------
+function badgeHtml(p) {
+  if (p.status === 'run') return '<span class="badge run">处理中…</span>';
+  if (p.status === 'ok') return '<span class="badge ok">已完成</span>';
+  if (p.status === 'err') return '<span class="badge err">失败</span>';
+  return '<span class="badge">待处理</span>';
+}
+
+// 兼容旧快照：没有 candidates 字段时，用当前图补一条
+function candidatesOf(p) {
+  if (!Array.isArray(p.candidates)) {
+    p.candidates = p.imageUrl ? [{ url: p.imageUrl, filename: p.imageFile, ts: 0 }] : [];
+  }
+  return p.candidates;
+}
+
+// 生图成功后记录候选；新生成的图默认作为当前页图
+function pushCandidate(p, url, filename) {
+  const list = candidatesOf(p);
+  list.push({ url: url, filename: filename, ts: Date.now() });
+  p.imageUrl = url;
+  p.imageFile = filename;
+}
+
+function useCandidate(pageId, i) {
+  const p = getPage(pageId);
+  if (!p) return;
+  const c = candidatesOf(p)[i];
+  if (!c) return;
+  p.imageUrl = c.url;
+  p.imageFile = c.filename;
+  renderPages();
+  toast('已选用第 ' + (i + 1) + ' 张候选图');
+}
+
+function selectPage(id) {
+  const insp = $('inspector');
+  if (insp) insp.classList.add('show');   // 窄屏时靠这个类浮出检查器
+  if (state.currentId === id) return;
+  syncInputs();
+  state.currentId = id;
+  renderPages();
+}
+
+function togglePick(id) {
+  const i = state.selected.indexOf(id);
+  if (i >= 0) state.selected.splice(i, 1); else state.selected.push(id);
+  renderCanvas();
+}
+
+function toggleSelectAll() {
+  if (state.selected.length) state.selected = [];
+  else state.selected = state.pages.map((p) => p.id);
+  renderCanvas();
+}
+
+async function optimizeSelected() {
+  syncInputs();
+  const targets = state.pages.filter((p) => state.selected.indexOf(p.id) >= 0 && p.description.trim());
+  if (!targets.length) { toast('请先勾选至少一页，并确保这些页有内容描述', true); return; }
+  if (!getSettings().deepseek_key) { toast('请先填写 DeepSeek Key', true); return; }
+  let done = 0;
+  for (const p of targets) {
+    progress(done, targets.length, `优化提示词 ${done + 1}/${targets.length}`);
+    await optimizePage(p.id);
+    done++;
+  }
+  progress(targets.length, targets.length, '选中页提示词优化完成');
+  setTimeout(hideProgress, 1500);
+}
+
+async function generateSelected() {
+  syncInputs();
+  const s = getSettings();
+  const targets = state.pages.filter((p) => state.selected.indexOf(p.id) >= 0 && isRenderable(p));
+  if (!targets.length) { toast('请先勾选至少一页，并确保这些页有提示词或图表数据', true); return; }
+  const needKey = targets.some((p) => !(PRECISE_CHARTS.includes(p.chart) && p.chart_data));
+  if (needKey && !s.openai_key) { toast('请先填写 OpenAI Key', true); return; }
+  const concurrency = Math.max(1, Math.min(20, parseInt(s.gen_concurrency, 10) || 1));
+  const total = targets.length;
+  const tasks = targets.map((p) => async () => {
+    try { await generatePage(p.id); } catch (_) {}
+  });
+  await runPool(tasks, concurrency, (fin, _, errs) => {
+    progress(fin, total, `生成选中图片 ${fin}/${total}` + (errs ? `（失败 ${errs}）` : ''));
+  });
+  progress(total, total, `选中页生成完毕：${total} 页`);
+  setTimeout(hideProgress, 1800);
+  toast('选中页生成完毕');
+}
+
+function removeSelected() {
+  if (!state.selected.length) { toast('还没有勾选任何页面'); return; }
+  const n = state.selected.length;
+  if (!confirm('确定删除选中的 ' + n + ' 页？此操作不可撤销。')) return;
+  state.pages = state.pages.filter((p) => state.selected.indexOf(p.id) < 0);
+  state.selected = [];
+  if (!state.pages.some((p) => p.id === state.currentId)) {
+    state.currentId = state.pages.length ? state.pages[0].id : null;
+  }
+  renderPages();
+  toast('已删除 ' + n + ' 页');
+}
+
 function renderPages() {
+  renderCanvas();
+  renderInspector();
+}
+
+function renderCanvas() {
   const box = $('pages');
+  if (!box) return;
+  const hint = $('selHint');
+  if (hint) {
+    const okN = state.pages.filter((p) => p.imageFile).length;
+    const errN = state.pages.filter((p) => p.status === 'err').length;
+    hint.textContent = `共 ${state.pages.length} 页 · 已出图 ${okN}` + (errN ? ` · 失败 ${errN}` : '')
+      + (state.selected.length ? ` · 已选 ${state.selected.length}` : '');
+  }
   if (!state.pages.length) {
-    box.innerHTML = '<div class="hint" style="padding:8px 0;">还没有页面，可用上方「智能生成」导入，或点击「手动添加页面」。</div>';
+    box.innerHTML = '<div class="canvas-empty">还没有页面。<br>在左侧「① 内容」里导入文档生成，或点上方「＋ 添加页面」手动添加。</div>';
     return;
   }
   box.innerHTML = state.pages.map((p, idx) => {
-    const badge = p.status === 'run'
-      ? '<span class="badge run">处理中…</span>'
-      : p.status === 'ok' ? '<span class="badge ok">已完成</span>'
-      : p.status === 'err' ? '<span class="badge err">失败</span>'
-      : '<span class="badge">待处理</span>';
-    const isPrecise = PRECISE_CHARTS.includes(p.chart);
-    const dataJson = p.chart_data ? JSON.stringify(p.chart_data, null, 2) : '';
+    const thumb = p.imageUrl
+      ? `<img src="${p.imageUrl}" alt="第 ${idx + 1} 页">`
+      : `<span>未生成</span>`;
+    const nCand = candidatesOf(p).length;
     return `
-    <div class="page-item" id="item_${p.id}">
-      <div class="page-head">
-        <span class="page-num">${idx + 1}</span>
-        <input class="page-title" id="title_${p.id}" placeholder="页面标题" value="${escapeHtml(p.title)}" oninput="getPage(${p.id}).title=this.value">
-        ${badge}
-        <button type="button" class="ghost" onclick="movePage(${p.id}, -1)" title="上移">↑</button>
-        <button type="button" class="ghost" onclick="movePage(${p.id}, 1)" title="下移">↓</button>
-        <button type="button" class="ghost danger" onclick="removePage(${p.id})">删除</button>
+    <div class="tile${state.currentId === p.id ? ' sel' : ''}"
+         id="item_${p.id}"
+         draggable="true"
+         ondragstart="dragStartPage(${p.id})"
+         ondragover="dragOverPage(event)"
+         ondrop="dropPage(${p.id})"
+         onclick="selectPage(${p.id})">
+      <div class="thumb">${thumb}<span class="tnum">${idx + 1}</span></div>
+      <input type="checkbox" class="tpick" ${state.selected.indexOf(p.id) >= 0 ? 'checked' : ''} onclick="event.stopPropagation(); togglePick(${p.id})" title="勾选以批量操作">
+      <div class="tname">${escapeHtml(p.title) || '<span style="color:var(--muted)">（未命名）</span>'}</div>
+      <div class="tmeta">
+        ${badgeHtml(p)}
+        ${p.chart ? `<span class="badge">${escapeHtml((CHART_OPTIONS.find((o) => o[0] === p.chart) || ['', p.chart])[1])}</span>` : ''}
+        ${nCand > 1 ? `<span class="badge">候选 ${nCand}</span>` : ''}
       </div>
-      <div class="page-body">
-        <div class="field">
-          <label>页面内容描述</label>
-          <textarea id="desc_${p.id}" placeholder="标题、正文要点、配图建议" oninput="getPage(${p.id}).description=this.value">${escapeHtml(p.description)}</textarea>
-        </div>
-        <div class="field">
-          <div class="opt-row">
-            <label>优化后的提示词（可手动修改）</label>
-            <button type="button" class="ghost" onclick="toggleOpt(${p.id})">展开/收起</button>
-          </div>
-          <textarea id="prompt_${p.id}" placeholder="点「优化提示词」后自动填充" oninput="getPage(${p.id}).prompt=this.value">${escapeHtml(p.prompt)}</textarea>
-        </div>
-        <div class="field">
-          <label>图表类型（精确类图表将用程序绘制，不消耗生图额度）</label>
-          <select onchange="getPage(${p.id}).chart=this.value; renderPages()">${chartOptionsHtml(p.chart)}</select>
-        </div>
-        ${isPrecise ? `<div class="field" style="grid-column:1/-1"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{getPage(${p.id}).chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
-        ${isPrecise ? '' : refChipsHtml(p)}
+      <div class="tacts">
+        <button type="button" class="ghost" onclick="event.stopPropagation(); generatePage(${p.id})">生成</button>
+        <button type="button" class="ghost" onclick="event.stopPropagation(); movePage(${p.id}, -1)">↑</button>
+        <button type="button" class="ghost" onclick="event.stopPropagation(); movePage(${p.id}, 1)">↓</button>
+        <button type="button" class="ghost danger" onclick="event.stopPropagation(); removePage(${p.id})">删</button>
       </div>
-      <div class="page-actions">
-        <button type="button" class="primary" onclick="optimizePage(${p.id})">优化提示词</button>
-        <button type="button" onclick="generatePage(${p.id})">生成图片</button>
-      </div>
-      ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx + 1} 页"><div style="margin-top:6px;"><button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">加入参考图</button></div></div>` : ''}
     </div>`;
   }).join('');
 }
 
+function renderInspector() {
+  const box = $('inspector');
+  if (!box) return;
+  const p = state.currentId != null ? getPage(state.currentId) : null;
+  if (!p) {
+    box.innerHTML = '<div class="insp-empty">点画布上任意一页<br>即可在这里编辑它的内容与提示词</div>';
+    return;
+  }
+  const idx = state.pages.indexOf(p) + 1;
+  const isPrecise = PRECISE_CHARTS.includes(p.chart);
+  const dataJson = p.chart_data ? JSON.stringify(p.chart_data, null, 2) : '';
+  const cands = candidatesOf(p);
+  box.innerHTML = `
+    <div class="insp-head">
+      <span class="page-num">${idx}</span>
+      <span class="insp-title">第 ${idx} 页 · 共 ${state.pages.length} 页</span>
+      ${badgeHtml(p)}
+    </div>
+    <div class="insp-field">
+      <label>页面标题</label>
+      <input class="page-title" id="title_${p.id}" placeholder="页面标题" value="${escapeHtml(p.title)}" oninput="getPage(${p.id}).title=this.value">
+    </div>
+    <div class="insp-field">
+      <label>页面内容描述</label>
+      <textarea id="desc_${p.id}" placeholder="标题、正文要点、配图建议" oninput="getPage(${p.id}).description=this.value">${escapeHtml(p.description)}</textarea>
+    </div>
+    <div class="insp-field">
+      <div class="opt-row">
+        <label>优化后的提示词（可手动修改）</label>
+        <button type="button" class="ghost" onclick="toggleOpt(${p.id})">展开/收起</button>
+      </div>
+      <textarea id="prompt_${p.id}" placeholder="点「优化提示词」后自动填充" oninput="getPage(${p.id}).prompt=this.value">${escapeHtml(p.prompt)}</textarea>
+    </div>
+    <div class="insp-field">
+      <label>图表类型（精确类图表将用程序绘制，不消耗生图额度）</label>
+      <select onchange="getPage(${p.id}).chart=this.value; renderPages()">${chartOptionsHtml(p.chart)}</select>
+    </div>
+    ${isPrecise ? `<div class="insp-field"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{getPage(${p.id}).chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
+    ${isPrecise ? '' : refChipsHtml(p)}
+    ${cands.length > 1 ? `
+    <div class="insp-field">
+      <div class="opt-row"><label>候选图（${cands.length} 张，点选切换）</label></div>
+      <div class="cand-strip">
+        ${cands.map((c, i) => `<div class="cand${c.url === p.imageUrl ? ' on' : ''}" onclick="useCandidate(${p.id}, ${i})" title="候选 ${i + 1}"><img src="${c.url}" alt="候选 ${i + 1}"></div>`).join('')}
+      </div>
+    </div>` : ''}
+    <div class="insp-actions">
+      <button type="button" class="primary" onclick="optimizePage(${p.id})">优化提示词</button>
+      <button type="button" onclick="generatePage(${p.id})">生成这一页</button>
+      <button type="button" class="ghost" onclick="movePage(${p.id}, -1)">上移</button>
+      <button type="button" class="ghost" onclick="movePage(${p.id}, 1)">下移</button>
+      ${p.imageFile ? `<button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">加入参考图</button>` : ''}
+      <button type="button" class="ghost danger" onclick="removePage(${p.id})">删除本页</button>
+    </div>
+    ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx} 页预览"></div>` : ''}
+  `;
+}
+
 function toggleOpt(id) {
   const el = $('prompt_' + id);
+  if (!el) return;
   el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
@@ -1825,8 +2282,7 @@ async function generatePage(id) {
     const isPrecise = PRECISE_CHARTS.includes(p.chart) && p.chart_data;
     if (isPrecise) {
       const data = await postJson('/api/render_chart', { chart: p.chart, chart_data: p.chart_data, index: idx, images_dir: s.images_dir, project_name: state.projectName });
-      p.imageUrl = data.url;
-      p.imageFile = data.filename;
+      pushCandidate(p, data.url, data.filename);
       p.status = 'ok';
       toast('第 ' + idx + ' 页图表已绘制');
     } else {
@@ -1850,8 +2306,7 @@ async function generatePage(id) {
       };
       if (refs.length) body.ref_images = refs;
       const data = await postJson('/api/generate', body);
-      p.imageUrl = data.url;
-      p.imageFile = data.filename;
+      pushCandidate(p, data.url, data.filename);
       p.refMode = data.mode || '';
       p.status = 'ok';
       if (data.degraded && refs.length > 1) {
@@ -2104,6 +2559,273 @@ function downloadPrompts() {
   toast(`已导出 ${rows.length} 页提示词${skipped ? `（跳过 ${skipped} 页无提示词）` : ''}`);
 }
 
+// ---------------- 工作台：日志 / 面板 / API 配置集 / 一键跑通 ----------------
+
+// 底栏日志（同时兜底展示最近一条）
+function log(msg) {
+  state.logs.push({ msg: msg, ts: Date.now() });
+  if (state.logs.length > 60) state.logs.shift();
+  const el = $('logText');
+  if (el) {
+    el.textContent = msg;
+    el.title = state.logs.slice(-8).map((l) => l.msg).join('\n');
+  }
+}
+
+// 左侧面板切换
+const PANEL_MAP = {
+  content: 'pnContent', assets: 'pnAssets', output: 'pnOutput',
+  history: 'pnHistory', settings: 'pnSettings',
+};
+// 再点一次当前导航项 = 收起面板，把宽度让给画布
+function showPanel(name, force) {
+  if (!PANEL_MAP[name]) name = 'content';
+  const panel = $('wbPanel');
+  const same = state.panel === name && panel && panel.classList.contains('show');
+  if (same && !force) {
+    if (panel) panel.classList.remove('show');
+    Object.keys(PANEL_MAP).forEach((k) => {
+      const nav = $('nav' + k.charAt(0).toUpperCase() + k.slice(1));
+      if (nav) nav.classList.remove('active');
+    });
+    try { localStorage.setItem(PANEL_KEY, ''); } catch (e) {}
+    return;
+  }
+  state.panel = name;
+  Object.keys(PANEL_MAP).forEach((k) => {
+    const sec = $(PANEL_MAP[k]);
+    if (sec) sec.classList.toggle('on', k === name);
+    const nav = $('nav' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (nav) nav.classList.toggle('active', k === name);
+  });
+  if (panel) panel.classList.toggle('show', true);
+  try { localStorage.setItem(PANEL_KEY, name); } catch (e) {}
+}
+
+// 静默保存设置（不弹 toast）
+function saveSettingsQuiet() {
+  localStorage.setItem('ppt_tool_settings', JSON.stringify(getSettings()));
+  syncImagesDirToServer();
+}
+
+// ---- API 配置集：一套 = 生图 + DeepSeek + 尺寸质量 ----
+function profileFromCurrent(name) {
+  return {
+    id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: name || '未命名配置',
+    openai_base_url: $('openai_base_url').value.trim(),
+    openai_key: $('openai_key').value.trim(),
+    openai_model: $('openai_model').value.trim(),
+    deepseek_base_url: $('deepseek_base_url').value.trim(),
+    deepseek_key: $('deepseek_key').value.trim(),
+    deepseek_model: $('deepseek_model').value,
+    img_size: $('img_size').value,
+    img_quality: $('img_quality').value,
+    skip_proxy: $('skip_proxy').checked,
+  };
+}
+
+function loadProfiles() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(API_PROFILE_KEY) || 'null'); } catch (e) {}
+  if (!d || !Array.isArray(d.list) || !d.list.length) {
+    const first = profileFromCurrent('默认配置');
+    d = { activeId: first.id, list: [first] };
+    try { localStorage.setItem(API_PROFILE_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+  return d;
+}
+
+function renderProfileSelect() {
+  const sel = $('apiProfileSel');
+  if (!sel) return;
+  const d = loadProfiles();
+  sel.innerHTML = d.list.map((p) =>
+    `<option value="${p.id}"${p.id === d.activeId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+}
+
+function renderProfiles() {
+  const box = $('profList');
+  const sum = $('apiProfSum');
+  const d = loadProfiles();
+  const active = d.list.find((p) => p.id === d.activeId) || d.list[0];
+  if (sum && active) sum.textContent = `共 ${d.list.length} 套 · 当前：${active.name}`;
+  if (!box) return;
+  box.innerHTML = d.list.map((p) => `
+    <div class="prof-item${p.id === d.activeId ? ' on' : ''}">
+      <span class="pname">${escapeHtml(p.name)}</span>
+      <button type="button" class="${p.id === d.activeId ? 'primary' : ''}" onclick="applyProfile('${p.id}')">${p.id === d.activeId ? '使用中' : '切换'}</button>
+      <span class="pmeta">生图 ${escapeHtml(p.openai_model || '—')} · ${p.openai_key ? 'Key 已填' : 'Key 未填'}　|　DeepSeek ${escapeHtml(p.deepseek_model || '—')} · ${p.deepseek_key ? 'Key 已填' : 'Key 未填'}</span>
+    </div>`).join('');
+}
+
+function applyProfile(id) {
+  const d = loadProfiles();
+  const p = d.list.find((x) => x.id === id) || d.list[0];
+  if (!p) return;
+  d.activeId = p.id;
+  try { localStorage.setItem(API_PROFILE_KEY, JSON.stringify(d)); } catch (e) {}
+  $('openai_base_url').value = p.openai_base_url || '';
+  $('openai_key').value = p.openai_key || '';
+  $('openai_model').value = p.openai_model || 'gpt-image-2';
+  $('deepseek_base_url').value = p.deepseek_base_url || 'https://api.deepseek.com';
+  $('deepseek_key').value = p.deepseek_key || '';
+  $('deepseek_model').value = p.deepseek_model || 'deepseek-chat';
+  $('img_size').value = p.img_size || '1920x1080';
+  $('img_quality').value = p.img_quality || 'high';
+  $('skip_proxy').checked = !!p.skip_proxy;
+  saveSettingsQuiet();
+  renderProfiles();
+  renderProfileSelect();
+}
+
+function switchApiProfile(id) {
+  applyProfile(id);
+  const d = loadProfiles();
+  const p = d.list.find((x) => x.id === id);
+  toast('已切换到配置「' + (p ? p.name : '') + '」');
+  log('切换 API 配置：' + (p ? p.name : ''));
+}
+
+function saveCurrentAsProfile() {
+  const d = loadProfiles();
+  const name = prompt('给这套配置起个名字（例如：中转站 A / 备用 Key）', '配置 ' + (d.list.length + 1));
+  if (name === null) return;
+  const p = profileFromCurrent((name || '').trim() || ('配置 ' + (d.list.length + 1)));
+  d.list.push(p);
+  d.activeId = p.id;
+  try { localStorage.setItem(API_PROFILE_KEY, JSON.stringify(d)); } catch (e) {}
+  renderProfiles();
+  renderProfileSelect();
+  toast('已保存配置「' + p.name + '」');
+}
+
+function renameActiveProfile() {
+  const d = loadProfiles();
+  const p = d.list.find((x) => x.id === d.activeId);
+  if (!p) return;
+  const name = prompt('重命名配置', p.name);
+  if (name === null) return;
+  p.name = (name || '').trim() || p.name;
+  try { localStorage.setItem(API_PROFILE_KEY, JSON.stringify(d)); } catch (e) {}
+  renderProfiles();
+  renderProfileSelect();
+}
+
+function deleteActiveProfile() {
+  const d = loadProfiles();
+  if (d.list.length <= 1) { toast('至少保留一套配置', true); return; }
+  const i = d.list.findIndex((x) => x.id === d.activeId);
+  if (i < 0) return;
+  if (!confirm('删除配置「' + d.list[i].name + '」？')) return;
+  d.list.splice(i, 1);
+  d.activeId = d.list[0].id;
+  try { localStorage.setItem(API_PROFILE_KEY, JSON.stringify(d)); } catch (e) {}
+  applyProfile(d.activeId);
+  toast('已删除该配置');
+}
+
+function openApiProfiles() {
+  showPanel('settings');
+  setCollapseOpen('apiProfSet', API_SET_KEY, true);
+  renderProfiles();
+}
+
+// ---- 一键跑通 ----
+const PIPE_STEPS = [
+  ['doc', '解析文档'], ['outline', '生成大纲'], ['split', '拆解文案'],
+  ['prompt', '生成提示词'], ['import', '导入页面'], ['img', '生成图片'], ['ppt', '导出 PPTX'],
+];
+function stepLabel(k) {
+  const s = PIPE_STEPS.find((x) => x[0] === k);
+  return s ? s[1] : k;
+}
+function renderPipeSteps() {
+  const box = $('pipeSteps');
+  if (!box) return;
+  const st = state.pipeline.steps || {};
+  box.innerHTML = PIPE_STEPS.map(([k, label]) =>
+    `<span class="ps${st[k] ? ' ' + st[k] : ''}">${label}</span>`).join('');
+}
+function setPipeStep(k, s) {
+  if (!state.pipeline.steps) state.pipeline.steps = {};
+  state.pipeline.steps[k] = s;
+  renderPipeSteps();
+}
+
+function togglePipeline() {
+  if (state.pipeline.running) {
+    state.pipeline.abort = true;
+    toast('已请求暂停，当前步骤跑完就停');
+    return;
+  }
+  runPipeline();
+}
+
+async function runPipeline() {
+  syncInputs();
+  const fileEl = $('docFile');
+  const hasDoc = !!state.docText
+    || (fileEl && fileEl.files && fileEl.files.length)
+    || ($('docPaste') && $('docPaste').value.trim());
+  // 有文档走完整链路；没有文档就从已有的页面继续（优化提示词 → 生图 → 导出）
+  const plan = hasDoc ? ['doc', 'outline', 'split', 'prompt', 'import', 'img', 'ppt']
+                      : ['prompt', 'img', 'ppt'];
+  if (hasDoc && state.pages.length) {
+    if (!confirm('一键跑通会先清空现有 ' + state.pages.length + ' 页，确定继续吗？')) return;
+  }
+  const P = state.pipeline;
+  P.running = true; P.abort = false; P.steps = {};
+  const btn = $('runAllBtn');
+  if (btn) btn.textContent = '⏸ 暂停';
+  renderPipeSteps();
+  const finish = () => {
+    P.running = false;
+    if (btn) btn.textContent = '▶ 一键跑通';
+  };
+  try {
+    for (const key of plan) {
+      if (P.abort) { log('已暂停，停在「' + stepLabel(key) + '」之前'); toast('已暂停'); finish(); return; }
+      setPipeStep(key, 'run');
+      log('正在' + stepLabel(key) + '…');
+      let okStep = true;
+      if (key === 'doc') { await parseDoc(); okStep = !!state.docText; }
+      else if (key === 'outline') { await genOutline(); okStep = state.outline.length > 0; }
+      else if (key === 'split') { await splitContent(); okStep = state.pagesContent.length > 0; }
+      else if (key === 'prompt') {
+        if (state.pagesContent.length) await genPrompts(); else await optimizeAll();
+        okStep = state.pagesContent.length
+          ? state.pagesContent.some((c) => c.prompt)
+          : state.pages.some((p) => p.prompt);
+      } else if (key === 'import') {
+        state.pages = []; state.selected = []; state.currentId = null;
+        importToPages();
+        okStep = state.pages.length > 0;
+        if (okStep) showPanel('assets');   // 导入后提示去挑参考图
+      } else if (key === 'img') {
+        await generateAll();
+        okStep = state.pages.some((p) => p.imageFile);
+      } else if (key === 'ppt') {
+        await buildPpt();
+        showPanel('output');
+      }
+      setPipeStep(key, okStep ? 'ok' : 'err');
+      if (!okStep) {
+        log('步骤「' + stepLabel(key) + '」没有产出结果，已停止', true);
+        toast('跑通中断：' + stepLabel(key) + ' 未完成，请检查设置后重试', true);
+        finish();
+        return;
+      }
+    }
+    log('一键跑通完成');
+    toast('一键跑通完成');
+  } catch (e) {
+    toast(e.message, true);
+    log('跑通出错：' + e.message, true);
+  }
+  finish();
+}
+
 // ---------------- 通用弹窗 ----------------
 function openModal(html) {
   $('modalBox').innerHTML = html;
@@ -2158,6 +2880,7 @@ function captureSnapshot() {
         chart: p.chart || '', chart_data: p.chart_data || null,
         imageUrl: p.imageUrl || '', imageFile: p.imageFile || '', status: p.status || '',
         refPick: Array.isArray(p.refPick) ? p.refPick.slice() : [],
+        candidates: Array.isArray(p.candidates) ? p.candidates.slice() : [],
       })),
       nextId: state.nextId,
       docText: state.docText || '',
@@ -2302,6 +3025,8 @@ function doRestoreHistory(id) {
   const ws = (snap.workState && typeof snap.workState === 'object') ? snap.workState : {};
   state.nextId = ws.nextId || 1;
   state.pages = Array.isArray(ws.pages) ? ws.pages : [];
+  state.currentId = state.pages.length ? state.pages[0].id : null;
+  state.selected = [];
   state.docText = ws.docText || '';
   state.outline = Array.isArray(ws.outline) ? ws.outline : [];
   state.pagesContent = Array.isArray(ws.pagesContent) ? ws.pagesContent : [];
@@ -2442,6 +3167,7 @@ function importHistory(ev) {
 // ---------------- 启动 ----------------
 loadSettings();
 initAdvSet();
+bindCollapse('apiProfSet', API_SET_KEY);
 syncImagesDirToServer();
 renderStylePresets();
 loadRefsLocal();
@@ -2449,6 +3175,13 @@ renderRefGrid();
 initRefDrop();
 renderPages();
 renderHistory();
+renderProfileSelect();
+renderProfiles();
+renderPipeSteps();
+let startPanel = 'content';
+try { startPanel = localStorage.getItem(PANEL_KEY) || 'content'; } catch (e) {}
+showPanel(startPanel);
+log('就绪 · 左侧「① 内容」上传文档，或直接「＋ 添加页面」手动开始');
 </script>
 </body>
 </html>

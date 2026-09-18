@@ -170,7 +170,7 @@ def ensure_app_files():
     """释放主程序文件到 APP_DIR（覆盖式更新，output/ 不受影响）。"""
     src = resource_dir()
     os.makedirs(APP_DIR, exist_ok=True)
-    for name in ("app.py", "requirements.txt"):
+    for name in ("app.py", "chart_renderer.py", "requirements.txt"):
         shutil.copyfile(os.path.join(src, name), os.path.join(APP_DIR, name))
     sdir = os.path.join(src, "static")
     ddir = os.path.join(APP_DIR, "static")
