@@ -674,10 +674,98 @@
     .wb-inspector { display: none; }
     .wb-inspector.show { display: block; position: absolute; right: 0; top: 0; bottom: 0; box-shadow: var(--shadow-xl); }
   }
+
+  /* ================= 中间区域双视图（页面画布 / 内容大纲） ================= */
+  .view-tabs { display: flex; gap: 2px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 2px; }
+  .view-tabs .vt {
+    border: none; background: transparent; box-shadow: none; padding: 5px 12px;
+    font-size: 12.5px; font-weight: 600; color: var(--text-soft); border-radius: 6px;
+  }
+  .view-tabs .vt:hover { background: var(--card); color: var(--primary); transform: none; box-shadow: none; }
+  .view-tabs .vt.on { background: var(--card); color: var(--primary-600); box-shadow: var(--shadow-sm); }
+  .view-tabs .vt:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* 内容视图：结果区占满中间，右侧检查器自动让位 */
+  .wb.focus-content .wb-inspector { display: none; }
+  .wb.show-content .bar-pages-only { display: none; }
+  .doc-area { display: none; }
+  .wb.show-content .doc-area { display: block; }
+  .wb.show-content .canvas-grid { display: none; }
+  .doc-area h3 { font-size: 14px; font-weight: 700; color: var(--text); margin: 0 0 10px; }
+  .doc-sec { margin-bottom: 20px; }
+  .doc-sec:empty { display: none; }
+  .doc-area .doc-empty {
+    display: none; padding: 46px 20px; text-align: center; color: var(--muted); font-size: 13.5px; line-height: 1.9;
+    border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--card-tint);
+  }
+  .doc-area.empty .doc-empty { display: block; }
+  #docArea .page-item { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 12px; }
+  #docArea .page-item:hover { background: var(--card); }
+  #docArea .page-body { grid-template-columns: 1fr 1fr; }
+  #docArea .field { margin-bottom: 10px; }
+  #docArea #docTextEdit { min-height: 320px; }
+  #docArea textarea { min-height: 110px; }
+
+  /* ================= 图片查看器 ================= */
+  .viewer-mask {
+    position: fixed; inset: 0; z-index: 960; padding: 22px;
+    background: rgba(28,25,23,.80); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center;
+    animation: fadeIn .2s;
+  }
+  .viewer-mask.show { display: flex; }
+  .viewer-box {
+    background: var(--card); border-radius: var(--radius);
+    box-shadow: var(--shadow-xl); border: 1px solid var(--border);
+    width: 100%; max-width: 1340px; max-height: 95vh;
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: popIn .26s cubic-bezier(.4,0,.2,1);
+  }
+  .viewer-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .viewer-title { font-size: 15px; font-weight: 700; }
+  .viewer-stage { flex: 1; min-height: 0; display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+  .viewer-imgwrap {
+    flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); overflow: hidden; min-height: 240px;
+  }
+  .viewer-imgwrap img { max-width: 100%; max-height: 76vh; display: block; }
+  .viewer-imgwrap img[src=""] { display: none; }
+  .viewer-empty { display: none; color: var(--muted); font-size: 13.5px; padding: 60px 20px; }
+  .viewer-empty.on { display: block; }
+  .viewer-nav {
+    flex: 0 0 auto; width: 44px; height: 96px; font-size: 24px; line-height: 1;
+    color: var(--primary-600); background: var(--card-tint); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 0;
+  }
+  .viewer-nav:hover { background: var(--grad-primary-soft); border-color: var(--primary-300); }
+  .viewer-nav:disabled { opacity: .35; }
+  .viewer-cands { display: flex; gap: 8px; padding: 0 16px 10px; overflow-x: auto; }
+  .viewer-cands:empty { display: none; }
+  .viewer-cands .cand { flex: 0 0 104px; border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 3px; cursor: pointer; background: var(--card-tint); position: relative; }
+  .viewer-cands .cand.on { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(234,88,12,.18); }
+  .viewer-cands .cand img { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; display: block; }
+  .viewer-cands .cand .cnum { position: absolute; left: 7px; top: 7px; background: rgba(41,37,36,.72); color: #fff; font-size: 10.5px; padding: 1px 6px; border-radius: 5px; font-weight: 700; }
+  .viewer-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .viewer-foot button { padding: 8px 14px; font-size: 13px; }
+  .viewer-dl {
+    display: inline-flex; align-items: center; padding: 8px 14px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-xs);
+    color: var(--text); background: var(--card); text-decoration: none;
+  }
+  .viewer-dl:hover { border-color: var(--primary-300); background: var(--card-tint); color: var(--primary-600); }
+  .tile .thumb .tzoom {
+    position: absolute; right: 6px; bottom: 6px; z-index: 3;
+    border: none; background: rgba(41,37,36,.68); color: #fff;
+    border-radius: 7px; padding: 3px 9px; font-size: 11.5px; font-weight: 700; line-height: 1.5;
+    box-shadow: none; opacity: 0; transition: opacity .2s;
+  }
+  .tile:hover .tzoom { opacity: 1; }
+  .tile .thumb .tzoom:hover { background: var(--primary); transform: none; }
 </style>
 </head>
 <body>
-<div class="wb">
+<div class="wb" id="wbRoot">
 
   <!-- ===== 顶栏 ===== -->
   <header class="wb-top">
@@ -898,9 +986,9 @@
       <button type="button" onclick="genOutline()">生成大纲</button>
       <button type="button" onclick="splitContent()">拆解文案</button>
       <button type="button" onclick="genPrompts()">生成提示词</button>
-      <button type="button" class="success" onclick="importToPages()">导入到页面列表 ↓</button>
+      <button type="button" class="success" onclick="importToPages()">导入到页面列表</button>
     </div>
-    <div id="docArea"></div>
+    <div class="hint" style="margin-top:4px;">解析结果、大纲与文案会显示在中间的大区域里（宽度足够阅读和编辑），生成后会自动切过去。</div>
   </div>
       </section>
 
@@ -995,18 +1083,29 @@
     <!-- ===== 中间：页面画布 ===== -->
     <main class="wb-canvas">
       <div class="canvas-bar">
-        <button type="button" class="primary" onclick="addPage()">＋ 添加页面</button>
-        <button type="button" onclick="optimizeAll()">优化全部提示词</button>
-        <button type="button" onclick="generateAll()">生成全部图片</button>
-        <button type="button" onclick="retryFailed()">重试失败</button>
-        <span style="width:1px;height:22px;background:var(--border);"></span>
-        <button type="button" onclick="optimizeSelected()">优化选中</button>
-        <button type="button" onclick="generateSelected()">生成选中</button>
-        <button type="button" class="danger" onclick="removeSelected()">删除选中</button>
-        <button type="button" class="ghost" onclick="toggleSelectAll()">全选/全不选</button>
-        <label><input type="checkbox" id="auto_master" style="width:auto;"> 首图当母版</label>
+        <div class="view-tabs">
+          <button type="button" class="vt" id="vtPages" onclick="setCanvasView('pages')">页面画布</button>
+          <button type="button" class="vt" id="vtContent" onclick="setCanvasView('content')">内容 · 大纲</button>
+        </div>
+        <span class="bar-pages-only" style="width:1px;height:22px;background:var(--border);"></span>
+        <button type="button" class="primary bar-pages-only" onclick="addPage()">＋ 添加页面</button>
+        <button type="button" class="bar-pages-only" onclick="optimizeAll()">优化全部提示词</button>
+        <button type="button" class="bar-pages-only" onclick="generateAll()">生成全部图片</button>
+        <button type="button" class="bar-pages-only" onclick="retryFailed()">重试失败</button>
+        <span class="bar-pages-only" style="width:1px;height:22px;background:var(--border);"></span>
+        <button type="button" class="bar-pages-only" onclick="optimizeSelected()">优化选中</button>
+        <button type="button" class="bar-pages-only" onclick="generateSelected()">生成选中</button>
+        <button type="button" class="danger bar-pages-only" onclick="removeSelected()">删除选中</button>
+        <button type="button" class="ghost bar-pages-only" onclick="toggleSelectAll()">全选/全不选</button>
+        <label class="bar-pages-only"><input type="checkbox" id="auto_master" style="width:auto;"> 首图当母版</label>
         <div class="spacer"></div>
         <span class="hint" style="margin:0;" id="selHint"></span>
+      </div>
+      <div id="docArea" class="doc-area">
+        <div id="docParsed" class="doc-sec"></div>
+        <div id="docOutlineSec" class="doc-sec"></div>
+        <div id="docContentSec" class="doc-sec"></div>
+        <div id="docEmpty" class="doc-empty">这里会显示「解析结果 / 大纲 / 页面文案」。<br>在左侧「① 内容」里选文件或粘贴文本，然后点「解析文档」开始。</div>
       </div>
       <div id="pages" class="canvas-grid"></div>
     </main>
@@ -1035,6 +1134,36 @@
   <div class="modal-box" id="modalBox"></div>
 </div>
 
+<!-- 图片查看器（放大看大图 / 判断是否重生成） -->
+<div class="viewer-mask" id="viewerMask" onclick="if(event.target===this)closeViewer()">
+  <div class="viewer-box">
+    <div class="viewer-head">
+      <span class="viewer-title" id="viewerTitle">—</span>
+      <span id="viewerBadge"></span>
+      <span class="hint" style="margin:0;" id="viewerMeta"></span>
+      <div class="spacer" style="flex:1;"></div>
+      <button type="button" class="ghost" onclick="closeViewer()">关闭 (Esc)</button>
+    </div>
+    <div class="viewer-stage">
+      <button type="button" class="viewer-nav" onclick="viewerPage(-1)" title="上一页（←）">‹</button>
+      <div class="viewer-imgwrap">
+        <img id="viewerImg" src="" alt="">
+        <div class="viewer-empty" id="viewerEmpty">这一页还没有生成图片</div>
+      </div>
+      <button type="button" class="viewer-nav" onclick="viewerPage(1)" title="下一页（→）">›</button>
+    </div>
+    <div class="viewer-cands" id="viewerCands"></div>
+    <div class="viewer-foot">
+      <span class="hint" style="margin:0;">← → 跨页翻图 · [ ] 切换本页候选 · Esc 关闭</span>
+      <div class="spacer" style="flex:1;"></div>
+      <button type="button" class="primary" id="viewerRegenBtn" onclick="viewerRegenerate()">重新生成这页</button>
+      <button type="button" id="viewerOptBtn" onclick="viewerOptimize()">优化提示词</button>
+      <button type="button" id="viewerMasterBtn" onclick="viewerSetMaster()">设为参考图</button>
+      <a class="viewer-dl" id="viewerDownload" href="#" download>下载原图</a>
+    </div>
+  </div>
+</div>
+
 <script>
 const state = {
   pages: [],
@@ -1053,6 +1182,8 @@ const state = {
   selected: [],       // 画布上勾选的页面 id（批量操作用）
   dragId: null,       // 正在拖拽的页面 id
   panel: 'content',   // 左侧面板：content / assets / output / history / settings
+  canvasView: 'pages',// 中间区域视图：pages（页面画布）/ content（解析结果 · 大纲 · 文案）
+  viewer: { open: false, pageId: null, candIdx: 0 },   // 图片查看器
   logs: [],           // 底栏日志（最近若干条）
   pipeline: { running: false, abort: false, steps: [] },
 };
@@ -1369,10 +1500,13 @@ async function parseDoc() {
 }
 
 function renderDoc() {
-  const box = $('docArea');
-  if (!state.docText) { box.innerHTML = ''; return; }
-  box.innerHTML = '<h3>解析结果（可编辑，' + state.docText.length + ' 字）</h3>' +
-    '<textarea id="docTextEdit" style="min-height:150px" oninput="state.docText=this.value">' + escapeHtml(state.docText) + '</textarea>';
+  const box = $('docParsed');
+  if (!box) return;
+  box.innerHTML = state.docText
+    ? '<h3>解析结果（可编辑，共 ' + state.docText.length + ' 字）</h3>'
+      + '<textarea id="docTextEdit" oninput="state.docText=this.value">' + escapeHtml(state.docText) + '</textarea>'
+    : '';
+  afterDocRender();
 }
 
 async function genOutline() {
@@ -1403,9 +1537,10 @@ async function genOutline() {
 }
 
 function renderOutline() {
-  const box = $('docArea');
-  if (!state.outline.length) { box.innerHTML = ''; return; }
-  box.innerHTML = '<h3>PPT 大纲（可编辑）</h3>' + state.outline.map((o, i) => `
+  const box = $('docOutlineSec');
+  if (!box) return;
+  box.innerHTML = state.outline.length
+    ? '<h3>PPT 大纲（可编辑，共 ' + state.outline.length + ' 页）</h3>' + state.outline.map((o, i) => `
     <div class="page-item">
       <div class="page-head"><span class="page-num">${i + 1}</span>
         <input class="page-title" value="${escapeHtml(o.title)}" placeholder="标题" oninput="state.outline[${i}].title=this.value">
@@ -1415,7 +1550,9 @@ function renderOutline() {
         <div class="field"><label>配图建议</label><textarea oninput="state.outline[${i}].visual=this.value">${escapeHtml(o.visual)}</textarea></div>
         <div class="field"><label>图表类型（可选）</label><select onchange="state.outline[${i}].chart=this.value">${chartOptionsHtml(o.chart)}</select></div>
       </div>
-    </div>`).join('');
+    </div>`).join('')
+    : '';
+  afterDocRender();
 }
 
 async function splitContent() {
@@ -1451,9 +1588,10 @@ async function splitContent() {
 }
 
 function renderContent() {
-  const box = $('docArea');
-  if (!state.pagesContent.length) { box.innerHTML = ''; return; }
-  box.innerHTML = '<h3>页面文案（可编辑）</h3>' + state.pagesContent.map((c, i) => {
+  const box = $('docContentSec');
+  if (!box) return;
+  box.innerHTML = state.pagesContent.length
+    ? '<h3>页面文案（可编辑，共 ' + state.pagesContent.length + ' 页）</h3>' + state.pagesContent.map((c, i) => {
     const isPrecise = PRECISE_CHARTS.includes(c.chart);
     const dataJson = c.chart_data ? JSON.stringify(c.chart_data, null, 2) : '';
     return `
@@ -1469,7 +1607,52 @@ function renderContent() {
         ${isPrecise ? `<div class="field" style="grid-column:1/-1"><label>图表数据（JSON，可编辑，须准确）</label><textarea style="min-height:96px;font-family:monospace;font-size:12px" oninput="try{state.pagesContent[${i}].chart_data=JSON.parse(this.value)}catch(e){}">${escapeHtml(dataJson)}</textarea></div>` : ''}
       </div>
     </div>`;
-  }).join('');
+  }).join('')
+    : '';
+  afterDocRender();
+}
+
+// ---------------- 中间区域双视图：页面画布 / 内容（解析结果 · 大纲 · 文案） ----------------
+function docHasContent() {
+  return ['docParsed', 'docOutlineSec', 'docContentSec'].some((id) => {
+    const el = $(id);
+    return !!(el && el.innerHTML && el.innerHTML.trim());
+  });
+}
+
+function syncCanvasView() {
+  const hasContent = docHasContent();
+  const view = (state.canvasView === 'content' && hasContent) ? 'content' : 'pages';
+  state.canvasView = view;
+  const wb = $('wbRoot');
+  if (wb) {
+    wb.classList.toggle('show-content', view === 'content');
+    wb.classList.toggle('focus-content', view === 'content');   // 内容视图时右侧检查器自动让位
+  }
+  const area = $('docArea');
+  if (area) area.classList.toggle('empty', !hasContent);
+  const vtP = $('vtPages'), vtC = $('vtContent');
+  if (vtP) vtP.classList.toggle('on', view === 'pages');
+  if (vtC) {
+    vtC.classList.toggle('on', view === 'content');
+    vtC.disabled = !hasContent;
+  }
+  updateSelHint();
+}
+
+// 三个渲染函数收尾统一调用：一有内容就自动切到内容视图（让生成结果立刻占满中间大区域）
+function afterDocRender() {
+  if (docHasContent()) state.canvasView = 'content';
+  syncCanvasView();
+}
+
+function setCanvasView(v) {
+  if (v === 'content' && !docHasContent()) {
+    toast('还没有可看的内容，先点「解析文档」或「生成大纲」', true);
+    return;
+  }
+  state.canvasView = v;
+  syncCanvasView();
 }
 
 function descOf(c) {
@@ -1510,8 +1693,9 @@ function importToPages() {
     addPage({ title: c.title, description: descOf(c), prompt: c.prompt || '', chart: c.chart || '', chart_data: c.chart_data || null });
     n++;
   });
-  toast('已导入 ' + n + ' 页到下方页面列表');
-  $('pages').scrollIntoView({ behavior: 'smooth' });
+  toast('已导入 ' + n + ' 页到页面画布');
+  state.canvasView = 'pages';   // 导入完自动回到页面画布
+  syncCanvasView();
 }
 
 // ---------------- ③ 参考图集（多参考图） ----------------
@@ -2116,16 +2300,28 @@ function renderPages() {
   renderInspector();
 }
 
+// 右上角统计：页面视图看页数/出图数，内容视图看字数/大纲页数
+function updateSelHint() {
+  const hint = $('selHint');
+  if (!hint) return;
+  if (state.canvasView === 'content') {
+    const parts = [];
+    if (state.docText) parts.push(`文档 ${state.docText.length} 字`);
+    if (state.outline.length) parts.push(`大纲 ${state.outline.length} 页`);
+    if (state.pagesContent.length) parts.push(`文案 ${state.pagesContent.length} 页`);
+    hint.textContent = parts.join(' · ');
+    return;
+  }
+  const okN = state.pages.filter((p) => p.imageFile).length;
+  const errN = state.pages.filter((p) => p.status === 'err').length;
+  hint.textContent = `共 ${state.pages.length} 页 · 已出图 ${okN}` + (errN ? ` · 失败 ${errN}` : '')
+    + (state.selected.length ? ` · 已选 ${state.selected.length}` : '');
+}
+
 function renderCanvas() {
   const box = $('pages');
   if (!box) return;
-  const hint = $('selHint');
-  if (hint) {
-    const okN = state.pages.filter((p) => p.imageFile).length;
-    const errN = state.pages.filter((p) => p.status === 'err').length;
-    hint.textContent = `共 ${state.pages.length} 页 · 已出图 ${okN}` + (errN ? ` · 失败 ${errN}` : '')
-      + (state.selected.length ? ` · 已选 ${state.selected.length}` : '');
-  }
+  updateSelHint();
   if (!state.pages.length) {
     box.innerHTML = '<div class="canvas-empty">还没有页面。<br>在左侧「① 内容」里导入文档生成，或点上方「＋ 添加页面」手动添加。</div>';
     return;
@@ -2142,8 +2338,9 @@ function renderCanvas() {
          ondragstart="dragStartPage(${p.id})"
          ondragover="dragOverPage(event)"
          ondrop="dropPage(${p.id})"
+         ondblclick="openViewer(${p.id})"
          onclick="selectPage(${p.id})">
-      <div class="thumb">${thumb}<span class="tnum">${idx + 1}</span></div>
+      <div class="thumb">${thumb}<span class="tnum">${idx + 1}</span>${p.imageUrl ? `<button type="button" class="tzoom" onclick="event.stopPropagation(); openViewer(${p.id})" title="放大查看">放大</button>` : ''}</div>
       <input type="checkbox" class="tpick" ${state.selected.indexOf(p.id) >= 0 ? 'checked' : ''} onclick="event.stopPropagation(); togglePick(${p.id})" title="勾选以批量操作">
       <div class="tname">${escapeHtml(p.title) || '<span style="color:var(--muted)">（未命名）</span>'}</div>
       <div class="tmeta">
@@ -2215,7 +2412,7 @@ function renderInspector() {
       ${p.imageFile ? `<button type="button" class="ghost" onclick="setMaster('${p.imageFile}','${p.imageUrl}')">加入参考图</button>` : ''}
       <button type="button" class="ghost danger" onclick="removePage(${p.id})">删除本页</button>
     </div>
-    ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx} 页预览"></div>` : ''}
+    ${p.imageUrl ? `<div class="preview"><img src="${p.imageUrl}" alt="第 ${idx} 页预览" onclick="openViewer(${p.id})" style="cursor:zoom-in;" title="点击放大查看（可翻页 / 重新生成）"><div class="hint" style="margin-top:6px;">点图片放大看大图，在查看器里可翻页、切换候选图、直接重新生成。</div></div>` : ''}
   `;
 }
 
@@ -2592,6 +2789,11 @@ function showPanel(name, force) {
     return;
   }
   state.panel = name;
+  // 切到「① 内容」面板时，中间区域若有解析结果 / 大纲 / 文案就一并显示出来
+  if (name === 'content' && typeof docHasContent === 'function' && docHasContent()) {
+    state.canvasView = 'content';
+    syncCanvasView();
+  }
   Object.keys(PANEL_MAP).forEach((k) => {
     const sec = $(PANEL_MAP[k]);
     if (sec) sec.classList.toggle('on', k === name);
@@ -2834,6 +3036,156 @@ function openModal(html) {
 function closeModal() {
   $('modalMask').classList.remove('show');
   $('modalBox').innerHTML = '';
+}
+
+// ---------------- 图片查看器（放大看大图 / 顺手重生成） ----------------
+function viewerPageList() {
+  return state.pages.filter((p) => p.imageUrl);   // 只翻有图的页
+}
+
+function currentViewerPage() {
+  return state.viewer.pageId != null ? getPage(state.viewer.pageId) : null;
+}
+
+function openViewer(pageId, candIdx) {
+  const p = getPage(pageId);
+  if (!p || !p.imageUrl) { toast('这一页还没有生成图片', true); return; }
+  const cands = candidatesOf(p);
+  let i = (candIdx == null) ? cands.findIndex((c) => c.url === p.imageUrl) : candIdx;
+  if (!(i >= 0)) i = 0;
+  state.viewer.open = true;
+  state.viewer.pageId = p.id;
+  state.viewer.candIdx = i;
+  const mask = $('viewerMask');
+  if (mask) mask.classList.add('show');
+  renderViewer();
+}
+
+function closeViewer() {
+  state.viewer.open = false;
+  const mask = $('viewerMask');
+  if (mask) mask.classList.remove('show');
+}
+
+function renderViewer() {
+  if (!state.viewer.open) return;
+  const p = currentViewerPage();
+  if (!p) { closeViewer(); return; }
+  const list = viewerPageList();
+  const pos = list.indexOf(p);
+  const cands = candidatesOf(p);
+  let idx = state.viewer.candIdx;
+  if (!(idx >= 0) || idx >= cands.length) idx = Math.max(0, cands.length - 1);
+  state.viewer.candIdx = idx;
+  const url = cands[idx] ? cands[idx].url : p.imageUrl;
+
+  const t = $('viewerTitle');
+  if (t) t.textContent = `第 ${state.pages.indexOf(p) + 1} / ${state.pages.length} 页 · ${p.title || '（未命名）'}`;
+  const b = $('viewerBadge');
+  if (b) b.innerHTML = badgeHtml(p);
+  const meta = $('viewerMeta');
+  if (meta) {
+    meta.textContent = (pos >= 0 ? `已出图 ${pos + 1}/${list.length}` : '')
+      + (cands.length > 1 ? ` · 候选 ${idx + 1}/${cands.length}` : '')
+      + (p.imageFile ? ` · ${p.imageFile}` : '');
+  }
+  const img = $('viewerImg');
+  if (img) { img.src = url || ''; img.alt = p.title || ''; }
+  const empty = $('viewerEmpty');
+  if (empty) empty.classList.toggle('on', !url);
+
+  const strip = $('viewerCands');
+  if (strip) {
+    strip.innerHTML = cands.length > 1
+      ? cands.map((c, i) => `<div class="cand${i === idx ? ' on' : ''}" onclick="viewerPick(${i})" title="候选 ${i + 1}"><img src="${c.url}" alt="候选 ${i + 1}"><span class="cnum">${i + 1}</span></div>`).join('')
+      : '';
+  }
+
+  const regen = $('viewerRegenBtn');
+  if (regen) regen.disabled = !isRenderable(p);
+  const opt = $('viewerOptBtn');
+  if (opt) opt.disabled = !(p.description || '').trim();
+  const master = $('viewerMasterBtn');
+  if (master) master.disabled = !p.imageFile;
+  const dl = $('viewerDownload');
+  if (dl) {
+    if (p.imageFile) {
+      dl.href = '/api/image/' + encodeURIComponent(p.imageFile);
+      dl.setAttribute('download', p.imageFile);
+      dl.style.display = '';
+    } else {
+      dl.style.display = 'none';
+    }
+  }
+}
+
+function viewerPick(i) {
+  const p = currentViewerPage();
+  if (!p) return;
+  const c = candidatesOf(p)[i];
+  if (!c) return;
+  p.imageUrl = c.url;
+  p.imageFile = c.filename;
+  state.viewer.candIdx = i;
+  renderViewer();
+  renderPages();
+}
+
+function viewerPage(dir) {
+  const list = viewerPageList();
+  if (!list.length) return;
+  const p = currentViewerPage();
+  const pos = list.indexOf(p);
+  const next = (pos < 0) ? 0 : (pos + dir + list.length) % list.length;
+  const np = list[next];
+  state.viewer.pageId = np.id;
+  const i = candidatesOf(np).findIndex((c) => c.url === np.imageUrl);
+  state.viewer.candIdx = i >= 0 ? i : 0;
+  renderViewer();
+  selectPage(np.id);   // 画布高亮与右侧检查器同步跟上
+}
+
+function viewerStepCand(dir) {
+  const p = currentViewerPage();
+  if (!p) return;
+  const n = candidatesOf(p).length;
+  if (n <= 1) return;
+  viewerPick((state.viewer.candIdx + dir + n) % n);
+}
+
+async function viewerRegenerate() {
+  const p = currentViewerPage();
+  if (!p) return;
+  if (!isRenderable(p)) { toast('这一页还没有提示词或图表数据', true); return; }
+  await generatePage(p.id);
+  state.viewer.candIdx = Math.max(0, candidatesOf(p).length - 1);   // 新图排在最后
+  renderViewer();
+}
+
+async function viewerOptimize() {
+  const p = currentViewerPage();
+  if (!p) return;
+  await optimizePage(p.id);
+  renderViewer();
+}
+
+function viewerSetMaster() {
+  const p = currentViewerPage();
+  if (!p || !p.imageFile) return;
+  setMaster(p.imageFile, p.imageUrl);
+}
+
+// 键盘：← → 翻页、[ ] 切候选、Esc 关闭
+function viewerKeydown(e) {
+  if (!state.viewer.open) return;
+  const k = e.key;
+  if (k === 'Escape') closeViewer();
+  else if (k === 'ArrowLeft') viewerPage(-1);
+  else if (k === 'ArrowRight') viewerPage(1);
+  else if (k === '[' || k === 'ArrowUp') viewerStepCand(-1);
+  else if (k === ']' || k === 'ArrowDown') viewerStepCand(1);
+  else return;
+  if (e.preventDefault) e.preventDefault();
 }
 
 // ---------------- 历史记录 ----------------
@@ -3181,6 +3533,8 @@ renderPipeSteps();
 let startPanel = 'content';
 try { startPanel = localStorage.getItem(PANEL_KEY) || 'content'; } catch (e) {}
 showPanel(startPanel);
+document.addEventListener('keydown', viewerKeydown);
+syncCanvasView();
 log('就绪 · 左侧「① 内容」上传文档，或直接「＋ 添加页面」手动开始');
 </script>
 </body>
