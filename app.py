@@ -47,6 +47,8 @@ CURRENT_PROJECT_NAME = None
 _KNOWN_PROJECT_DIRS = []  # 历史项目子文件夹名（新→旧），用于跨项目查找历史图片
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+# 本地工具：页面/静态资源禁缓存，避免更新文件后浏览器拿到旧版
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
 # ---------------------------------------------------------------------------
 # System Prompt 集
@@ -121,6 +123,27 @@ GRADE_HINTS = {
     "高中": "逻辑清晰、结构化表达、可包含概念关系与推导",
     "大学": "术语准确、体系完整、专业严谨",
 }
+
+COMIC_SCRIPT_SYSTEM = (
+    "你是一位资深漫画分镜师与编剧，擅长把故事或教学内容改编成适合学生阅读的漫画分镜脚本。\n"
+    "目标受众：{grade}学生。整体画风：{style}。\n"
+    "请根据用户提供的故事文本，生成一份 {page_count} 页的漫画分镜脚本。\n"
+    "要求：\n"
+    "1. 严格输出 JSON 对象，字段为：\n"
+    "   title（漫画标题）、\n"
+    "   characters（主要角色数组，每个含 name 与 appearance（外貌固定描述一句话，供 AI 生图锁定长相）；"
+    "没有具名角色则为空数组）、\n"
+    "   pages（页数组，每页含 page（页码，从 1 开始）、"
+    "layout（格子版式，取值仅限 1 / 2v / 2x2 / 3v / 1+2 / 2+1，格数依次为 1/2/4/3/3/3）、"
+    "panels（格数组，数量必须与版式格数一致，按阅读顺序排列，每格含 "
+    "scene（场景一句话）、shot（景别，取值仅限 远景/全景/中景/近景/特写）、"
+    "desc（本格画面内容描述，供 AI 生图使用，只描述画面，不要包含对白或旁白文字）、"
+    "dialogue（对白数组，每条含 speaker（角色名）与 text（一句简短口语化对白，不超过 30 字），"
+    "无对白则为空数组）、narration（旁白一句话，无则为空字符串））。\n"
+    "2. 叙事连贯、由浅入深，每页 2~4 格为宜；对白口语化、贴合 {grade} 学生的表达习惯。\n"
+    "3. 角色的 appearance 描述一旦确定，全文逐字复用，不要改写，以保证生图时长相一致。\n"
+    "4. 只输出 JSON 本身，不要任何解释、不要 markdown 代码块标记。"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -281,7 +304,13 @@ def _image_roots():
             for pn in _KNOWN_PROJECT_DIRS:
                 add(os.path.join(d, pn))
             add(os.path.join(d, "masters"))
+    # 默认目录下的项目子文件夹同样要参与查找（与自定义目录逻辑对齐）：
+    # 否则活跃项目 + 默认目录时，图存进 <IMAGES_DIR>/<项目>/ 却找不到
+    if CURRENT_PROJECT_NAME:
+        add(os.path.join(IMAGES_DIR, CURRENT_PROJECT_NAME))
     add(IMAGES_DIR)
+    for pn in _KNOWN_PROJECT_DIRS:
+        add(os.path.join(IMAGES_DIR, pn))
     add(MASTERS_DIR)
     return roots
 
@@ -400,6 +429,26 @@ def _parse_json(content):
     except Exception:
         start = content.find("[")
         end = content.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(content[start:end + 1])
+        raise
+
+
+def _parse_json_obj(content):
+    """从模型返回文本里稳健提取 JSON 对象（分镜脚本用；容忍 markdown 代码块包裹）。"""
+    content = content.strip()
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines).strip()
+    try:
+        return json.loads(content)
+    except Exception:
+        start = content.find("{")
+        end = content.rfind("}")
         if start != -1 and end != -1 and end > start:
             return json.loads(content[start:end + 1])
         raise
@@ -878,6 +927,11 @@ def _gen_edit(key, base_url, model, prompt, size, index, ref_items, skip_proxy=F
 @app.route("/")
 def index():
     return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/comic")
+def comic_page():
+    return send_from_directory(STATIC_DIR, "comic.html")
 
 
 @app.route("/output/<path:filename>")
@@ -1542,6 +1596,294 @@ def zip_images():
     else:
         url = f"/api/download?path={quote(zpath)}"
     return _ok({"filename": zname, "url": url, "abs_path": os.path.abspath(zpath)})
+
+
+# ---------------------------------------------------------------------------
+# 漫画模式：分镜脚本 / 拼格出页 / 导出 PDF·ZIP
+# ---------------------------------------------------------------------------
+def _normalize_comic_script(script):
+    """把模型输出的分镜脚本清洗成稳定结构：缺字段补默认、版式与格数不符时按实际格数重排版式。"""
+    from comic_composer import LAYOUT_COUNTS, layout_for_count
+    if not isinstance(script, dict):
+        raise ValueError("分镜脚本不是 JSON 对象")
+    title = str(script.get("title") or "未命名漫画").strip() or "未命名漫画"
+    style = str(script.get("style") or "").strip()
+    characters = []
+    for c in script.get("characters") or []:
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name") or "").strip()
+        if name:
+            characters.append({"name": name, "appearance": str(c.get("appearance") or "").strip()})
+    pages = []
+    for i, p in enumerate(script.get("pages") or [], start=1):
+        if not isinstance(p, dict):
+            continue
+        panels = []
+        for panel in p.get("panels") or []:
+            if not isinstance(panel, dict):
+                continue
+            dialogue = []
+            for d in panel.get("dialogue") or []:
+                if not isinstance(d, dict):
+                    continue
+                t = str(d.get("text") or "").strip()
+                if t:
+                    dialogue.append({"speaker": str(d.get("speaker") or "").strip(),
+                                     "text": t,
+                                     "pos": str(d.get("pos") or "").strip().lower()})
+            panels.append({
+                "scene": str(panel.get("scene") or "").strip(),
+                "shot": str(panel.get("shot") or "").strip(),
+                "desc": str(panel.get("desc") or "").strip(),
+                "dialogue": dialogue,
+                "narration": str(panel.get("narration") or "").strip(),
+            })
+        panels = panels[:4]
+        if not panels:
+            continue
+        layout = str(p.get("layout") or "").strip()
+        if layout not in LAYOUT_COUNTS or LAYOUT_COUNTS[layout] != len(panels):
+            layout = layout_for_count(len(panels))
+        mode = str(p.get("mode") or "panels").strip()
+        if mode not in ("panels", "fullpage"):
+            mode = "panels"
+        pages.append({"page": int(p.get("page") or i), "mode": mode, "layout": layout, "panels": panels})
+    if not pages:
+        raise ValueError("分镜脚本里没有有效页面")
+    return {"title": title, "style": style, "characters": characters, "pages": pages}
+
+
+@app.route("/api/comic_script", methods=["POST"])
+def comic_script():
+    """故事文本 → 漫画分镜脚本（DeepSeek）。"""
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("deepseek_key") or "").strip()
+    base_url = (data.get("deepseek_base_url") or "https://api.deepseek.com").strip().rstrip("/")
+    model = (data.get("deepseek_model") or "deepseek-chat").strip()
+    text = (data.get("text") or "").strip()
+    page_count = data.get("page_count") or 4
+    style = (data.get("style") or "现代扁平插画风，色彩明快").strip()
+    grade = (data.get("grade") or "通用").strip()
+    skip_proxy = data.get("skip_proxy") or False
+    images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
+
+    if not key:
+        return _err("请先填写 DeepSeek API Key")
+    if not text:
+        return _err("请先粘贴或上传故事文本")
+
+    _remember_images_dir(images_dir)
+    # 项目兜底（同 /api/outline）：没有项目就用故事开头建一个，保证格图有处可存
+    if project_name:
+        _remember_project(project_name)
+    elif not CURRENT_PROJECT_NAME:
+        parent = os.path.abspath(images_dir) if images_dir else IMAGES_DIR
+        os.makedirs(parent, exist_ok=True)
+        raw = (text[:20].replace("\n", " ").replace("\r", " ").strip()) or time.strftime("%Y%m%d")
+        base = _build_project_name(raw)
+        final = _make_project_name_unique(parent, base)
+        os.makedirs(os.path.join(parent, final), exist_ok=True)
+        _remember_project(final)
+        project_name = final
+    else:
+        project_name = CURRENT_PROJECT_NAME
+
+    try:
+        page_count = max(1, min(int(page_count), 20))
+    except (TypeError, ValueError):
+        page_count = 4
+
+    system = COMIC_SCRIPT_SYSTEM.format(page_count=page_count, style=style, grade=grade)
+    user = text if len(text) <= 12000 else text[:9000] + "\n\n……(中间省略)……\n\n" + text[-3000:]
+
+    try:
+        content = _call_deepseek(key, base_url, model, system, user, max_tokens=6000, skip_proxy=skip_proxy)
+        script = _normalize_comic_script(_parse_json_obj(content))
+        return _ok({"script": script, "project_name": project_name})
+    except Exception as e:  # noqa: BLE001
+        return _err(f"分镜脚本生成失败：{e}", 500)
+
+
+@app.route("/api/comic_character", methods=["POST"])
+def comic_character():
+    """生成角色设定卡：单角色立绘（正面全身、纯色背景），落盘 masters/ 并注册为「人物」参考图。
+
+    逐格生图时前端按格内出现的角色名自动带上对应角色卡，保证跨格长相一致。
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("openai_key") or "").strip()
+    base_url = (data.get("openai_base_url") or "").strip().rstrip("/")
+    model = (data.get("model") or "gpt-image-2").strip()
+    quality = (data.get("quality") or "high").strip()
+    name = (data.get("name") or "").strip()
+    appearance = (data.get("appearance") or "").strip()
+    style = (data.get("style") or "").strip()
+    skip_proxy = data.get("skip_proxy") or False
+    images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
+
+    if not key:
+        return _err("请先填写 OpenAI API Key")
+    if not base_url:
+        return _err("请先填写 OpenAI API 地址")
+    if not name or not appearance:
+        return _err("角色名与外貌描述不能为空")
+
+    _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
+
+    prompt = (
+        f"{style + ', ' if style else ''}character design sheet of {name}: {appearance}. "
+        "Full body, front view, standing pose, centered, clean plain light background. "
+        "Absolutely NO text, NO labels, NO watermark in the image."
+    )
+    r = _text2img_once(key, base_url, model, prompt, "1024x1536", quality, "png",
+                       int(time.time()) % 100000, skip_proxy, prefix="master",
+                       images_dir=images_dir, project_name=project_name)
+    if not r.get("ok"):
+        return _err(r.get("error") or "角色卡生成失败")
+
+    # 注册进参考图索引：role=character，权重 8（高于默认风格图），note 记角色名供前端匹配
+    fname = r["filename"]
+    _, mas_dir = _save_dirs(images_dir, project_name)
+    fpath = os.path.join(mas_dir, fname)
+    digest = ""
+    try:
+        with open(fpath, "rb") as f:
+            digest = hashlib.sha1(f.read()).hexdigest()
+    except Exception:  # noqa: BLE001
+        pass
+    index = _load_refs_index(mas_dir)
+    index.setdefault("items", {})[fname] = {
+        "role": "character", "weight": 8, "note": name,
+        "sha1": digest, "addedAt": int(time.time() * 1000),
+    }
+    _save_refs_index(mas_dir, index)
+    return _ok({"filename": fname, "url": r["url"]})
+
+
+@app.route("/api/comic_compose", methods=["POST"])
+def comic_compose():
+    """把每页的格图 + 对白/旁白拼成竖版 A4 漫画页。
+
+    入参 pages：[{"page": 1, "mode": "panels"|"fullpage", "layout": "2x2",
+                  "image": "整页图文件名（fullpage 模式）",
+                  "panels": [{"image": "格图文件名", "dialogue": [...], "narration": "..."}]}]
+    缺图的格画「待生成」占位，便于部分生成时预览。
+    """
+    from comic_composer import compose_page, frame_fullpage
+    data = request.get_json(force=True, silent=True) or {}
+    pages = data.get("pages") or []
+    images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
+    _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
+    if not pages:
+        return _err("没有可拼接的页面")
+
+    img_dir, _ = _save_dirs(images_dir, project_name)
+    out = []
+    for k, p in enumerate(pages, start=1):
+        if not isinstance(p, dict):
+            continue
+        page_no = p.get("page") or k
+        try:
+            page_no = int(page_no)
+        except (TypeError, ValueError):
+            page_no = k
+        mode = (p.get("mode") or "panels").strip()
+        if mode == "fullpage":
+            fn = (p.get("image") or "").strip()
+            src = _find_image(fn) if fn else None
+            if not src:
+                return _err(f"第 {page_no} 页是整页模式但缺少整页图片")
+            with Image.open(src) as im0:
+                page_img = frame_fullpage(im0.convert("RGB"), page_no=page_no)
+        else:
+            panels = []
+            for panel in p.get("panels") or []:
+                if not isinstance(panel, dict):
+                    continue
+                pim = None
+                fn = (panel.get("image") or "").strip()
+                if fn:
+                    src = _find_image(fn)
+                    if src:
+                        with Image.open(src) as im0:
+                            pim = im0.convert("RGB")
+                panels.append({"image": pim,
+                               "dialogue": panel.get("dialogue") or [],
+                               "narration": panel.get("narration") or ""})
+            page_img = compose_page(panels, layout=p.get("layout"), page_no=page_no)
+        fname = f"comic_p{page_no:02d}_{int(time.time() * 1000)}.png"
+        page_img.save(os.path.join(img_dir, fname))
+        out.append({"page": page_no, "filename": fname, "url": _image_url(fname)})
+    if not out:
+        return _err("没有可拼接的页面")
+    return _ok({"pages": out})
+
+
+@app.route("/api/comic_export", methods=["POST"])
+def comic_export():
+    """把拼好的漫画页导出为 PDF（Pillow 原生多页）和/或 ZIP。"""
+    from comic_composer import save_pdf
+    data = request.get_json(force=True, silent=True) or {}
+    images = data.get("images") or []
+    title = _sanitize_deck_title(data.get("title"), fallback="漫画")
+    fmt = (data.get("format") or "pdf").strip().lower()
+    output_dir = (data.get("output_dir") or "").strip()
+    images_dir = (data.get("images_dir") or "").strip() or None
+    project_name = (data.get("project_name") or "").strip() or None
+    _remember_images_dir(images_dir)
+    if project_name:
+        _remember_project(project_name)
+    if not images:
+        return _err("还没有可导出的漫画页")
+    if fmt not in ("pdf", "zip", "both"):
+        fmt = "pdf"
+
+    paths = []
+    for fn in images:
+        fp = _find_image(fn)
+        if not fp:
+            return _err(f"找不到图片：{_validate_filename(fn)}")
+        paths.append(fp)
+
+    save_dir = output_dir if output_dir else OUTPUT_DIR
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+    except Exception as e:
+        return _err(f"输出目录创建失败：{e}")
+
+    def file_url(name, abs_p):
+        if os.path.abspath(save_dir) == os.path.abspath(OUTPUT_DIR):
+            return f"/output/{name}"
+        return f"/api/download?path={quote(abs_p)}"
+
+    result = {}
+    if fmt in ("pdf", "both"):
+        pdf_path = _make_file_unique(os.path.join(save_dir, f"{title}.pdf"))
+        ims = []
+        for fp in paths:
+            with Image.open(fp) as im0:
+                ims.append(im0.convert("RGB"))
+        save_pdf(ims, pdf_path)
+        name = os.path.basename(pdf_path)
+        result["pdf"] = {"filename": name, "url": file_url(name, pdf_path),
+                         "abs_path": os.path.abspath(pdf_path)}
+    if fmt in ("zip", "both"):
+        zpath = _make_file_unique(os.path.join(save_dir, f"{title}.zip"))
+        with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
+            for fp in paths:
+                zf.write(fp, arcname=os.path.basename(fp))
+        name = os.path.basename(zpath)
+        result["zip"] = {"filename": name, "url": file_url(name, zpath),
+                         "abs_path": os.path.abspath(zpath)}
+    return _ok(result)
 
 
 # ---------------------------------------------------------------------------

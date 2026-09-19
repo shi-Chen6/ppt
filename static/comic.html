@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>漫画工作台</title>
+<style>
+  :root {
+    --bg: #f2f3f5; --card: #ffffff; --ink: #1f2329; --muted: #6b7280;
+    --line: #e3e6ea; --brand: #4b3fe3; --brand-soft: #eeedfd;
+    --ok: #15803d; --err: #b91c1c; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.6 "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: #fff;
+           border-radius: 8px; padding: 6px 14px; color: var(--ink); }
+  button:hover { border-color: var(--brand); color: var(--brand); }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button.primary:hover { opacity: .9; color: #fff; }
+  button.success { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.success:hover { opacity: .9; color: #fff; }
+  button.small { padding: 2px 10px; font-size: 12px; border-radius: 6px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  input, textarea, select { font: inherit; color: var(--ink); border: 1px solid var(--line);
+           border-radius: 8px; padding: 6px 10px; background: #fff; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--brand); }
+  textarea { resize: vertical; }
+  label.fld { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+  /* 顶栏 */
+  .top { position: sticky; top: 0; z-index: 50; display: flex; align-items: center;
+         justify-content: space-between; padding: 10px 20px; background: #20242b; color: #fff; }
+  .top .brand { display: flex; align-items: center; gap: 10px; }
+  .top .logo { background: var(--brand); border-radius: 8px; padding: 2px 10px; font-weight: 700; }
+  .top .proj { font-size: 12px; opacity: .85; }
+  .top .actions { display: flex; align-items: center; gap: 8px; }
+  .top button { background: transparent; border-color: rgba(255,255,255,.35); color: #fff; }
+  .top button:hover { border-color: #fff; color: #fff; }
+  .top button.primary { background: var(--brand); border-color: var(--brand); }
+  .top button.success { background: var(--ok); border-color: var(--ok); }
+
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 16px 20px 60px; display: grid;
+          grid-template-columns: 380px 1fr; gap: 16px; align-items: start; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+          padding: 14px 16px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; }
+  .card h3 .step { color: var(--brand); margin-right: 6px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 0 0 auto; }
+  .grow { flex: 1 1 auto; }
+  .mt8 { margin-top: 8px; } .mt12 { margin-top: 12px; }
+  .hint { font-size: 12px; color: var(--muted); }
+
+  /* 设置 */
+  details.card summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  .set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .set-grid .full { grid-column: 1 / -1; }
+  .set-grid input { width: 100%; }
+
+  /* 角色 */
+  .char-row { display: grid; grid-template-columns: 100px 1fr auto 26px; gap: 6px; margin-bottom: 6px; }
+  .charcard { display: flex; align-items: center; gap: 4px; }
+  .charthumb { width: 26px; height: 36px; object-fit: cover; border-radius: 4px;
+               border: 1px solid var(--line); cursor: zoom-in; }
+
+  /* 页卡片 */
+  .page-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+               margin-bottom: 16px; overflow: hidden; }
+  .page-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+               background: #fafbfc; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .page-head .no { font-weight: 700; color: var(--brand); }
+  .page-body { padding: 12px 14px; display: grid; gap: 10px; }
+  .panel-box { border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; }
+  .panel-box .phead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .panel-box .pno { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .panel-grid { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+  .thumb { width: 150px; height: 150px; object-fit: cover; border: 1px solid var(--line);
+           border-radius: 6px; background: #f3f4f6; cursor: zoom-in; display: block; }
+  .thumb.empty { display: flex; align-items: center; justify-content: center;
+                 color: #9ca3af; font-size: 12px; }
+  .dlg-row { display: grid; grid-template-columns: 90px 1fr 74px 26px; gap: 6px; margin-bottom: 4px; }
+  .dlg-row input, .dlg-row select { padding: 3px 8px; font-size: 13px; border-radius: 6px; }
+  .fullpage-box { display: grid; grid-template-columns: 170px 1fr; gap: 10px; }
+  .fullpage-box .thumb { width: 170px; height: 240px; }
+
+  .composed { border-top: 1px dashed var(--line); padding-top: 10px; }
+  .composed img { max-width: 320px; border: 1px solid var(--line); border-radius: 6px;
+                  cursor: zoom-in; display: block; }
+  .composed .tag { font-size: 12px; color: var(--ok); margin-bottom: 6px; }
+
+  /* 日志与提示 */
+  #log { position: fixed; left: 16px; bottom: 16px; z-index: 60; max-width: 420px;
+         font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  #log div { background: rgba(32,36,43,.92); color: #fff; padding: 6px 12px; border-radius: 8px; }
+  #log div.err { background: rgba(185,28,28,.95); }
+
+  /* 大图查看 */
+  #viewer { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.82);
+            display: none; align-items: center; justify-content: center; }
+  #viewer img { max-width: 92vw; max-height: 92vh; border-radius: 6px; }
+  #viewer .close { position: absolute; top: 16px; right: 20px; color: #fff; font-size: 26px;
+                   cursor: pointer; background: none; border: none; }
+
+  @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="logo">漫画</span>
+    <div>
+      <div style="font-weight:600;">漫画工作台</div>
+      <div class="proj" id="topProject">项目：未创建</div>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="button" onclick="location.href='/'">← 返回 PPT</button>
+    <button type="button" class="primary" id="runAllBtn" onclick="runAll()">▶ 一键跑通</button>
+    <button type="button" id="composeAllBtn" onclick="composeAll()">拼全部页</button>
+    <button type="button" class="success" onclick="exportComic('pdf')">导出 PDF</button>
+    <button type="button" onclick="exportComic('zip')">导出 ZIP</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- ===== 左栏：设置 + 故事 + 分镜 ===== -->
+  <div>
+    <details class="card" id="setCard">
+      <summary>API 设置（与 PPT 页共享）</summary>
+      <div class="set-grid">
+        <div class="full"><label class="fld">OpenAI 生图地址</label><input id="openai_base_url" placeholder="https://api.openai.com/v1 或中转站地址"></div>
+        <div class="full"><label class="fld">OpenAI Key</label><input id="openai_key" type="password"></div>
+        <div><label class="fld">生图模型</label><input id="openai_model" value="gpt-image-2"></div>
+        <div><label class="fld">生图质量</label>
+          <select id="img_quality" style="width:100%"><option>high</option><option>medium</option><option>low</option></select></div>
+        <div class="full"><label class="fld">DeepSeek 地址</label><input id="deepseek_base_url"></div>
+        <div class="full"><label class="fld">DeepSeek Key</label><input id="deepseek_key" type="password"></div>
+        <div><label class="fld">DeepSeek 模型</label><input id="deepseek_model" value="deepseek-chat"></div>
+        <div style="display:flex;align-items:flex-end;gap:6px;"><label style="font-size:13px;"><input type="checkbox" id="skip_proxy"> 跳过系统代理</label></div>
+        <div class="full"><label class="fld">图片保存目录（留空用默认 output/images）</label><input id="images_dir"></div>
+        <div class="full"><label class="fld">成品输出目录（留空用默认 output）</label><input id="output_dir"></div>
+      </div>
+      <div class="row mt12">
+        <button type="button" class="primary" onclick="saveSettings()">保存设置</button>
+        <button type="button" onclick="newProject()">新建项目</button>
+      </div>
+    </details>
+
+    <div class="card">
+      <h3><span class="step">①</span>故事文本</h3>
+      <textarea id="story" rows="8" style="width:100%" placeholder="粘贴故事或教学内容，或上传文档…"></textarea>
+      <div class="row mt8">
+        <input type="file" id="docFile" accept=".docx,.doc,.txt,.md" style="display:none" onchange="uploadDoc(this)">
+        <button type="button" onclick="$('docFile').click()">上传文档</button>
+        <span class="hint">docx / txt / md</span>
+      </div>
+      <div class="row mt8">
+        <span class="hint">页数</span><input type="number" id="page_count" value="4" min="1" max="20" style="width:64px">
+        <span class="hint">年级</span>
+        <select id="grade"><option>小学</option><option>初中</option><option>高中</option><option>大学</option><option selected>通用</option></select>
+      </div>
+      <div class="mt8"><label class="fld">画风</label>
+        <input id="comic_style" style="width:100%" value="现代扁平插画风，色彩明快"></div>
+      <button type="button" class="primary mt12" id="genScriptBtn" onclick="genScript()">生成分镜脚本</button>
+    </div>
+
+    <div class="card" id="scriptCard" style="display:none">
+      <h3><span class="step">②</span>分镜脚本</h3>
+      <label class="fld">标题</label>
+      <input id="s_title" style="width:100%" oninput="state.script.title=this.value">
+      <div class="mt8"><label class="fld">画风（写进生图提示词）</label>
+      <input id="s_style" style="width:100%" oninput="state.script.style=this.value"></div>
+      <div class="mt12"><label class="fld">角色（外貌描述逐字固定；「角色卡」生成立绘后，逐格生图自动带上锁定长相）</label>
+        <div id="charList"></div>
+        <button type="button" class="small" onclick="addChar()">+ 加角色</button>
+      </div>
+      <div class="row mt12">
+        <button type="button" class="primary" id="genAllBtn" onclick="genAll()">生成全部空格</button>
+        <span class="hint">每格一张 1024×1024，整页模式用 1024×1536</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 主区：页面列表 ===== -->
+  <div id="pages"></div>
+</div>
+
+<div id="log"></div>
+<div id="viewer" onclick="this.style.display='none'">
+  <button class="close">✕</button><img id="viewerImg" alt="">
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LAYOUTS = {"1": 1, "2v": 2, "2x2": 4, "3v": 3, "1+2": 3, "2+1": 3};
+const SHOTS = ["远景", "全景", "中景", "近景", "特写"];
+const state = { story: "", script: null, composed: {}, projectName: "", busy: false };
+
+// ---------- 基础工具 ----------
+async function postJson(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) throw new Error(data.error || ("HTTP " + r.status));
+  return data;
+}
+function toast(msg, isErr) {
+  const d = document.createElement("div");
+  if (isErr) d.className = "err";
+  d.textContent = msg;
+  $("log").appendChild(d);
+  setTimeout(() => d.remove(), isErr ? 8000 : 3500);
+}
+function view(url) { $("viewerImg").src = url; $("viewer").style.display = "flex"; }
+
+// ---------- 设置（与 PPT 页共享 localStorage） ----------
+function loadSettings() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem("ppt_tool_settings") || "null"); } catch (e) {}
+  if (!s) return;
+  $("openai_base_url").value = s.openai_base_url || "";
+  $("openai_key").value = s.openai_key || "";
+  $("openai_model").value = s.openai_model || "gpt-image-2";
+  $("img_quality").value = s.img_quality || "high";
+  $("deepseek_base_url").value = s.deepseek_base_url || "https://api.deepseek.com";
+  $("deepseek_key").value = s.deepseek_key || "";
+  $("deepseek_model").value = s.deepseek_model || "deepseek-chat";
+  $("skip_proxy").checked = !!s.skip_proxy;
+  $("images_dir").value = s.images_dir || "";
+  $("output_dir").value = s.output_dir || "";
+  state.projectName = s.project_name || "";
+  updateProjectLabel();
+}
+function getSettings() {
+  return {
+    openai_base_url: $("openai_base_url").value.trim(),
+    openai_key: $("openai_key").value.trim(),
+    openai_model: $("openai_model").value.trim() || "gpt-image-2",
+    img_quality: $("img_quality").value,
+    deepseek_base_url: $("deepseek_base_url").value.trim() || "https://api.deepseek.com",
+    deepseek_key: $("deepseek_key").value.trim(),
+    deepseek_model: $("deepseek_model").value.trim() || "deepseek-chat",
+    skip_proxy: $("skip_proxy").checked,
+    images_dir: $("images_dir").value.trim(),
+    output_dir: $("output_dir").value.trim(),
+    project_name: state.projectName || "",
+  };
+}
+function saveSettings() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("ppt_tool_settings") || "{}"); } catch (e) {}
+  localStorage.setItem("ppt_tool_settings", JSON.stringify(Object.assign(saved, getSettings())));
+  toast("设置已保存（PPT 页同步生效）");
+}
+function updateProjectLabel() {
+  $("topProject").textContent = "项目：" + (state.projectName || "未创建");
+}
+function applyProjectName(name) {
+  if (!name) return;
+  state.projectName = name;
+  updateProjectLabel();
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem("ppt_tool_settings") || "{}"); } catch (e) {}
+  saved.project_name = name;
+  localStorage.setItem("ppt_tool_settings", JSON.stringify(saved));
+}
+async function newProject() {
+  const s = getSettings();
+  const raw = prompt("请输入项目名（将组合为 YYYYMMDD_<项目名>；可留空仅用当天日期）", "");
+  if (raw === null) return;
+  try {
+    const data = await postJson("/api/new_project", { images_dir: s.images_dir, project_name: raw });
+    applyProjectName(data.project_name || "");
+    toast("已创建项目：" + state.projectName);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ---------- 状态持久化 ----------
+function saveState() {
+  try {
+    localStorage.setItem("comic_tool_state", JSON.stringify({
+      story: state.story, script: state.script,
+      composed: state.composed, projectName: state.projectName,
+    }));
+  } catch (e) {}
+}
+function loadState() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem("comic_tool_state") || "null"); } catch (e) {}
+  if (!s) return;
+  state.story = s.story || "";
+  state.script = s.script || null;
+  state.composed = s.composed || {};
+  if (s.projectName && !state.projectName) state.projectName = s.projectName;
+  $("story").value = state.story;
+  updateProjectLabel();
+}
+
+// ---------- ① 故事 → 分镜 ----------
+async function uploadDoc(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const s = getSettings();
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("images_dir", s.images_dir);
+  fd.append("project_name", s.project_name);
+  try {
+    const r = await fetch("/api/parse_doc", { method: "POST", body: fd });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || data.ok === false) throw new Error(data.error || ("HTTP " + r.status));
+    $("story").value = data.text || "";
+    state.story = $("story").value;
+    if (data.project_name) applyProjectName(data.project_name);
+    saveState();
+    toast("文档已解析，共 " + (data.text || "").length + " 字");
+  } catch (e) { toast("文档解析失败：" + e.message, true); }
+  input.value = "";
+}
+
+async function genScript() {
+  const s = getSettings();
+  const text = $("story").value.trim();
+  if (!s.deepseek_key) return toast("请先在 API 设置里填写 DeepSeek Key", true);
+  if (!text) return toast("请先粘贴故事文本或上传文档", true);
+  state.busy = true; $("genScriptBtn").disabled = true;
+  try {
+    const data = await postJson("/api/comic_script", {
+      deepseek_key: s.deepseek_key, deepseek_base_url: s.deepseek_base_url,
+      deepseek_model: s.deepseek_model, text,
+      page_count: parseInt($("page_count").value, 10) || 4,
+      style: $("comic_style").value.trim(), grade: $("grade").value,
+      skip_proxy: s.skip_proxy, images_dir: s.images_dir, project_name: s.project_name,
+    });
+    state.script = data.script;
+    if (data.project_name) applyProjectName(data.project_name);
+    state.composed = {};
+    renderScript(); renderPages(); saveState();
+    toast("分镜脚本已生成：共 " + state.script.pages.length + " 页");
+  } catch (e) { toast("分镜生成失败：" + e.message, true); }
+  state.busy = false; $("genScriptBtn").disabled = false;
+}
+
+// ---------- ② 分镜编辑 ----------
+function renderScript() {
+  const sc = state.script;
+  $("scriptCard").style.display = sc ? "" : "none";
+  if (!sc) return;
+  $("s_title").value = sc.title || "";
+  $("s_style").value = sc.style || "";
+  renderChars();
+}
+function renderChars() {
+  const box = $("charList");
+  box.innerHTML = "";
+  (state.script.characters || []).forEach((c, i) => {
+    const row = document.createElement("div");
+    row.className = "char-row";
+    row.innerHTML = `<input placeholder="角色名" value="${esc(c.name)}" oninput="updChar(${i},'name',this.value)">
+      <input placeholder="外貌固定描述" value="${esc(c.appearance)}" oninput="updChar(${i},'appearance',this.value)">
+      <span class="charcard">
+        ${c.ref_image ? `<img class="charthumb" src="/api/image/${c.ref_image}" title="角色卡：${esc(c.name)}" onclick="view('/api/image/${c.ref_image}')">` : ""}
+        <button type="button" class="small" title="生成角色立绘卡（供逐格生图锁定长相）" onclick="genCharCard(${i})">${c.ref_image ? "重画" : "角色卡"}</button>
+      </span>
+      <button type="button" class="small" onclick="delChar(${i})">✕</button>`;
+    box.appendChild(row);
+  });
+}
+function updChar(i, k, v) { state.script.characters[i][k] = v; saveState(); }
+function addChar() { state.script.characters.push({ name: "", appearance: "" }); renderChars(); saveState(); }
+function delChar(i) { state.script.characters.splice(i, 1); renderChars(); saveState(); }
+function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+
+// ---------- 页面渲染 ----------
+function renderPages() {
+  const box = $("pages");
+  box.innerHTML = "";
+  const sc = state.script;
+  if (!sc) { box.innerHTML = '<div class="card hint">先在左侧粘贴故事并「生成分镜脚本」。</div>'; return; }
+  sc.pages.forEach((p, pi) => box.appendChild(renderPage(p, pi)));
+  const add = document.createElement("button");
+  add.type = "button"; add.textContent = "+ 加一页"; add.style.width = "100%";
+  add.onclick = addPage;
+  box.appendChild(add);
+}
+
+function renderPage(p, pi) {
+  const card = document.createElement("div");
+  card.className = "page-card";
+  const isFull = p.mode === "fullpage";
+  const layoutOpts = Object.keys(LAYOUTS).map(l =>
+    `<option value="${l}" ${l === p.layout ? "selected" : ""}>${l}（${LAYOUTS[l]} 格）</option>`).join("");
+
+  let body = "";
+  if (isFull) {
+    body = `<div class="fullpage-box">
+      ${p.image
+        ? `<img class="thumb" src="/api/image/${p.image}" onclick="view('/api/image/${p.image}')">`
+        : `<div class="thumb empty">未生成</div>`}
+      <div>
+        <div class="hint" style="margin-bottom:6px;">整页模式：整页一张图，对白由模型画进画面（中文可能出错字）。</div>
+        <div class="row">
+          <button type="button" class="small primary" onclick="genFullpage(${pi})">${p.image ? "重画整页" : "生成整页"}</button>
+          <button type="button" class="small" onclick="composePage(${pi})">拼此页</button>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    body = (p.panels || []).map((panel, ci) => renderPanel(p, pi, panel, ci)).join("");
+  }
+  const comp = state.composed[p.page];
+  card.innerHTML = `
+    <div class="page-head">
+      <span class="no">第 ${p.page} 页</span>
+      <select onchange="setMode(${pi},this.value)" title="生成模式">
+        <option value="panels" ${isFull ? "" : "selected"}>逐格生成</option>
+        <option value="fullpage" ${isFull ? "selected" : ""}>整页生成</option>
+      </select>
+      <select onchange="setLayout(${pi},this.value)" title="格子版式" ${isFull ? "disabled" : ""}>${layoutOpts}</select>
+      <button type="button" class="small" onclick="genPage(${pi})" ${isFull ? "disabled" : ""}>生成本页空格</button>
+      <button type="button" class="small" onclick="composePage(${pi})" ${isFull ? "disabled" : ""}>拼此页</button>
+      <span class="grow"></span>
+      <button type="button" class="small" onclick="delPage(${pi})" title="删除此页">🗑</button>
+    </div>
+    <div class="page-body">${body}
+      ${comp ? `<div class="composed"><div class="tag">✓ 已拼页：${comp.filename}</div>
+        <img src="${comp.url}" onclick="view('${comp.url}')"></div>` : ""}
+    </div>`;
+  return card;
+}
+
+function renderPanel(p, pi, panel, ci) {
+  const dlgs = (panel.dialogue || []).map((d, di) => `
+    <div class="dlg-row">
+      <input placeholder="角色" value="${esc(d.speaker)}" oninput="updDlg(${pi},${ci},${di},'speaker',this.value)">
+      <input placeholder="对白（≤30 字）" value="${esc(d.text)}" oninput="updDlg(${pi},${ci},${di},'text',this.value)">
+      <select onchange="updDlg(${pi},${ci},${di},'pos',this.value)">
+        ${["tl", "tr", "bl", "br"].map(pos => `<option value="${pos}" ${d.pos === pos ? "selected" : ""}>${{ tl: "左上", tr: "右上", bl: "左下", br: "右下" }[pos]}</option>`).join("")}
+      </select>
+      <button type="button" class="small" onclick="delDlg(${pi},${ci},${di})">✕</button>
+    </div>`).join("");
+  return `<div class="panel-box">
+    <div class="phead"><span class="pno">第 ${ci + 1} 格</span>
+      <select oninput="updPanel(${pi},${ci},'shot',this.value)">
+        <option value="">景别</option>
+        ${SHOTS.map(s => `<option ${panel.shot === s ? "selected" : ""}>${s}</option>`).join("")}
+      </select>
+      <input class="grow" placeholder="场景（一句话）" value="${esc(panel.scene)}" oninput="updPanel(${pi},${ci},'scene',this.value)">
+    </div>
+    <div class="panel-grid">
+      ${panel.image
+        ? `<img class="thumb" src="/api/image/${panel.image}" onclick="view('/api/image/${panel.image}')">`
+        : `<div class="thumb empty">未生成</div>`}
+      <div>
+        <textarea rows="2" style="width:100%" placeholder="画面描述（供生图，不含对白文字）"
+          oninput="updPanel(${pi},${ci},'desc',this.value)">${esc(panel.desc)}</textarea>
+        <input class="mt8" style="width:100%" placeholder="旁白（可选）" value="${esc(panel.narration)}"
+          oninput="updPanel(${pi},${ci},'narration',this.value)">
+        <div class="mt8">${dlgs}
+          <button type="button" class="small" onclick="addDlg(${pi},${ci})">+ 加对白</button>
+          <button type="button" class="small primary" onclick="genPanel(${pi},${ci})">${panel.image ? "重画此格" : "生成此格"}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ---------- 编辑回调（只改状态，不重渲染，避免打断输入） ----------
+function updPanel(pi, ci, k, v) { state.script.pages[pi].panels[ci][k] = v; saveState(); }
+function updDlg(pi, ci, di, k, v) { state.script.pages[pi].panels[ci].dialogue[di][k] = v; saveState(); }
+function addDlg(pi, ci) {
+  state.script.pages[pi].panels[ci].dialogue.push({ speaker: "", text: "", pos: "tl" });
+  renderPages(); saveState();
+}
+function delDlg(pi, ci, di) {
+  state.script.pages[pi].panels[ci].dialogue.splice(di, 1);
+  renderPages(); saveState();
+}
+function setMode(pi, v) {
+  state.script.pages[pi].mode = v;
+  renderPages(); saveState();
+}
+function setLayout(pi, v) {
+  const p = state.script.pages[pi];
+  const n = LAYOUTS[v];
+  p.layout = v;
+  p.panels = p.panels || [];
+  while (p.panels.length < n) p.panels.push({ scene: "", shot: "", desc: "", dialogue: [], narration: "" });
+  if (p.panels.length > n && !confirm(`新版式只有 ${n} 格，多余的 ${p.panels.length - n} 格将被删除，确定？`)) {
+    renderPages(); return;
+  }
+  p.panels = p.panels.slice(0, n);
+  renderPages(); saveState();
+}
+function addPage() {
+  const sc = state.script;
+  const no = sc.pages.reduce((m, p) => Math.max(m, p.page || 0), 0) + 1;
+  sc.pages.push({ page: no, mode: "panels", layout: "2x2",
+    panels: [0, 1, 2, 3].map(() => ({ scene: "", shot: "", desc: "", dialogue: [], narration: "" })) });
+  renderPages(); saveState();
+}
+function delPage(pi) {
+  if (!confirm(`删除第 ${state.script.pages[pi].page} 页？`)) return;
+  state.script.pages.splice(pi, 1);
+  renderPages(); saveState();
+}
+
+// ---------- ③ 生图 ----------
+function charBrief() {
+  return (state.script.characters || [])
+    .filter(c => c.name && c.appearance)
+    .map(c => `${c.name}: ${c.appearance}`).join("; ");
+}
+function panelPrompt(panel) {
+  const style = state.script.style || "";
+  let p = `${style} comic panel illustration${panel.shot ? ", " + panel.shot + " shot" : ""}` +
+          `${panel.scene ? ", scene: " + panel.scene : ""}. ${panel.desc || ""}.`;
+  const chars = charBrief();
+  if (chars) p += ` Characters (keep identical appearance): ${chars}.`;
+  p += " Clean comic panel art. Absolutely NO text, NO speech bubbles, NO captions, NO watermark in the image.";
+  return p;
+}
+function fullpagePrompt(page) {
+  const style = state.script.style || "";
+  const parts = (page.panels || []).map((pn, i) => `Panel ${i + 1}: ${pn.desc || ""}`).join(" ");
+  const dlg = [];
+  (page.panels || []).forEach(pn => {
+    if (pn.narration) dlg.push("旁白框: " + pn.narration);
+    (pn.dialogue || []).forEach(d => dlg.push(`${d.speaker}: ${d.text}`));
+  });
+  let p = `${style} comic page, vertical A4 portrait, ${page.layout} grid layout with ${(page.panels || []).length} panels, thin black panel borders. ${parts}.`;
+  const chars = charBrief();
+  if (chars) p += ` Characters (keep identical appearance): ${chars}.`;
+  if (dlg.length) p += ` Draw speech bubbles with these exact Chinese texts (render Chinese accurately): ${dlg.join(" / ")}.`;
+  return p;
+}
+// 生成角色立绘卡（注册为「人物」参考图，逐格生图自动带上）
+async function genCharCard(i) {
+  const c = state.script.characters[i];
+  if (!c.name.trim() || !c.appearance.trim()) return toast("先填角色名和外貌描述", true);
+  const s = getSettings();
+  try {
+    toast(`生成角色卡：${c.name}…`);
+    const data = await postJson("/api/comic_character", {
+      openai_key: s.openai_key, openai_base_url: s.openai_base_url, model: s.openai_model,
+      quality: s.img_quality, name: c.name.trim(), appearance: c.appearance.trim(),
+      style: (state.script.style || $("comic_style").value).trim(),
+      skip_proxy: s.skip_proxy, images_dir: s.images_dir, project_name: s.project_name,
+    });
+    c.ref_image = data.filename;
+    renderChars(); saveState();
+    toast(`角色卡完成：${c.name}`);
+  } catch (e) { toast("角色卡生成失败：" + e.message, true); }
+}
+
+// 逐格生图时按格内出现的角色名自动携带对应角色卡
+function panelRefs(panel) {
+  const text = [panel.scene, panel.desc, panel.narration]
+    .concat((panel.dialogue || []).map(d => (d.speaker || "") + " " + (d.text || "")))
+    .join(" ");
+  return (state.script.characters || [])
+    .filter(c => c.ref_image && c.name && text.indexOf(c.name) !== -1)
+    .map(c => ({ filename: c.ref_image, role: "character", weight: 8, note: c.name }));
+}
+
+async function callGenerate(prompt, size, index, refs) {
+  const s = getSettings();
+  if (!s.openai_key) throw new Error("请先在 API 设置里填写 OpenAI Key");
+  if (!s.openai_base_url) throw new Error("请先在 API 设置里填写 OpenAI 生图地址");
+  const data = await postJson("/api/generate", {
+    openai_key: s.openai_key, openai_base_url: s.openai_base_url, model: s.openai_model,
+    prompt, size, quality: s.img_quality, format: "png", index,
+    ref_images: refs || [], lock_scope: (refs && refs.length) ? "face" : "style",
+    skip_proxy: s.skip_proxy, images_dir: s.images_dir, project_name: s.project_name,
+  });
+  if (data.project_name) applyProjectName(data.project_name);
+  return data.filename;
+}
+async function genPanel(pi, ci) {
+  const panel = state.script.pages[pi].panels[ci];
+  if (!panel.desc) return toast(`第 ${pi + 1} 页第 ${ci + 1} 格缺少画面描述`, true);
+  try {
+    toast(`开始生成：第 ${pi + 1} 页第 ${ci + 1} 格…`);
+    panel.image = await callGenerate(panelPrompt(panel), "1024x1024",
+      state.script.pages[pi].page * 100 + ci, panelRefs(panel));
+    renderPages(); saveState();
+    toast(`第 ${pi + 1} 页第 ${ci + 1} 格完成`);
+  } catch (e) { toast("生成失败：" + e.message, true); }
+}
+async function genFullpage(pi) {
+  const page = state.script.pages[pi];
+  try {
+    toast(`开始生成：第 ${page.page} 页（整页）…`);
+    // 整页模式：本页所有格内出现的角色卡都带上
+    const refMap = {};
+    (page.panels || []).forEach(pn => panelRefs(pn).forEach(r => { refMap[r.filename] = r; }));
+    page.image = await callGenerate(fullpagePrompt(page), "1024x1536", page.page, Object.values(refMap));
+    renderPages(); saveState();
+    toast(`第 ${page.page} 页整页完成`);
+  } catch (e) { toast("生成失败：" + e.message, true); }
+}
+async function genPage(pi) {
+  const page = state.script.pages[pi];
+  for (let ci = 0; ci < (page.panels || []).length; ci++) {
+    if (page.panels[ci].image) continue;
+    await genPanel(pi, ci);
+  }
+}
+async function genAll() {
+  if (!state.script) return;
+  if (state.busy) return toast("正在生成中，请稍候", true);
+  state.busy = true; $("genAllBtn").disabled = true;
+  for (let pi = 0; pi < state.script.pages.length; pi++) {
+    const page = state.script.pages[pi];
+    try {
+      if (page.mode === "fullpage") { if (!page.image) await genFullpage(pi); }
+      else await genPage(pi);
+    } catch (e) { /* genPanel 内部已提示 */ }
+  }
+  state.busy = false; $("genAllBtn").disabled = false;
+  toast("全部空格生成完毕，可以拼页预览");
+}
+
+// ---------- ④ 拼页 ----------
+function pagePayload(p) {
+  if (p.mode === "fullpage") return { page: p.page, mode: "fullpage", image: p.image || "" };
+  return { page: p.page, mode: "panels", layout: p.layout,
+    panels: (p.panels || []).map(pn => ({ image: pn.image || "", dialogue: pn.dialogue || [], narration: pn.narration || "" })) };
+}
+async function composePage(pi) {
+  const p = state.script.pages[pi];
+  const s = getSettings();
+  try {
+    const data = await postJson("/api/comic_compose", {
+      pages: [pagePayload(p)], images_dir: s.images_dir, project_name: s.project_name,
+    });
+    const r = (data.pages || [])[0];
+    if (r) { state.composed[p.page] = { filename: r.filename, url: r.url }; }
+    renderPages(); saveState();
+    toast(`第 ${p.page} 页拼页完成`);
+  } catch (e) { toast("拼页失败：" + e.message, true); }
+}
+async function composeAll() {
+  if (!state.script) return toast("请先生成分镜脚本", true);
+  const s = getSettings();
+  $("composeAllBtn").disabled = true;
+  try {
+    const data = await postJson("/api/comic_compose", {
+      pages: state.script.pages.map(pagePayload), images_dir: s.images_dir, project_name: s.project_name,
+    });
+    (data.pages || []).forEach(r => { state.composed[r.page] = { filename: r.filename, url: r.url }; });
+    renderPages(); saveState();
+    toast("全部页面拼页完成，可导出");
+  } catch (e) { toast("拼页失败：" + e.message, true); }
+  $("composeAllBtn").disabled = false;
+}
+
+// ---------- ⑤ 导出 ----------
+async function exportComic(fmt) {
+  const s = getSettings();
+  const pages = (state.script ? state.script.pages : []).map(p => p.page);
+  const images = pages.filter(no => state.composed[no]).map(no => state.composed[no].filename);
+  if (!images.length) return toast("还没有拼好的页面，请先「拼全部页」", true);
+  try {
+    const data = await postJson("/api/comic_export", {
+      images, title: (state.script && state.script.title) || "漫画",
+      format: fmt, output_dir: s.output_dir, images_dir: s.images_dir, project_name: s.project_name,
+    });
+    const item = data[fmt];
+    if (item && item.url) {
+      // 同源下载用 <a download>，避免一键跑通后 window.open 被浏览器拦截
+      const a = document.createElement("a");
+      a.href = item.url; a.download = item.filename || "";
+      document.body.appendChild(a); a.click(); a.remove();
+      toast(`已导出：${item.filename}`);
+    }
+  } catch (e) { toast("导出失败：" + e.message, true); }
+}
+
+// ---------- 一键跑通：故事 → 分镜 → 生图 → 拼页 → 导出 PDF ----------
+async function runAll() {
+  if (state.busy) return toast("正在运行中，请稍候", true);
+  if (!state.script) {
+    await genScript();                 // 内部已做校验与提示
+    if (!state.script) return;
+  }
+  await genAll();                      // 只补空格 / 未生成的整页
+  await composeAll();
+  const hasComposed = state.script && state.script.pages.some(p => state.composed[p.page]);
+  if (hasComposed) await exportComic("pdf");
+  toast("一键跑通完成");
+}
+
+// ---------- 启动 ----------
+loadSettings();
+loadState();
+if (state.script) { renderScript(); renderPages(); }
+else { $("pages").innerHTML = '<div class="card hint">先在左侧粘贴故事并「生成分镜脚本」。</div>'; }
+</script>
+</body>
+</html>
